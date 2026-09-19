@@ -17,7 +17,7 @@ export default async function Page() {
 
   const { data: profileRow } = await supabase
     .from('profiles')
-    .select('full_name, phone, unit_value, cuit, address, city, province')
+    .select('full_name, phone, unit_value, cuit, address, city, province, role')
     .eq('id', user?.id ?? '')
     .maybeSingle()
 
@@ -27,7 +27,7 @@ export default async function Page() {
     .eq('user_id', user?.id ?? '')
     .maybeSingle()
 
-  const { data: allTrades } = await supabase.from('trades').select('id, name, slug').order('name')
+  const { data: allTrades } = await supabase.from('trades').select('id, name, slug').eq('is_active', true).order('name')
 
   const [list, customers, subscription, enabledTradeIds, tradeLimit] = await Promise.all([
     getMyList(),
@@ -41,6 +41,7 @@ export default async function Page() {
     id: service.id,
     name: service.name,
     category: (service as any).categories?.name ?? 'General',
+    trade: (service as any).categories?.trades?.name ?? 'General',
     unit: service.unit_label,
     base: pricing!.basePrice,
     regional: pricing!.referencePrice,
@@ -80,6 +81,7 @@ export default async function Page() {
       paymentDetails={paymentDetails}
       customers={customers ?? []}
       trades={trades}
+      isAdminUser={profileRow?.role === 'admin'}
       subscription={
         subscription
           ? { id: subscription.id, planName: (subscription as any).plans?.name ?? 'Plan', status: subscription.status, endDate: subscription.end_date }

@@ -11,6 +11,22 @@ async function logAudit(entity: string, entityId: string | null, action: string,
 
 // El propio usuario puede arrancar su prueba gratuita (RLS lo permite solo con status 'trial').
 // Duración configurable por plan (plans.trial_days), no hardcodeada (sección 12).
+// Solo admin (RLS lo exige igual)
+export async function updatePlan(planId: string, formData: FormData) {
+  const supabase = await createClient()
+  const patch = {
+    name: String(formData.get('name')),
+    price: Number(formData.get('price')),
+    billing_period: String(formData.get('billing_period')),
+    max_trades: formData.get('max_trades') ? Number(formData.get('max_trades')) : null,
+    trial_days: Number(formData.get('trial_days')),
+    is_active: formData.get('is_active') === 'on',
+  }
+  const { error } = await supabase.from('plans').update(patch).eq('id', planId)
+  if (error) return { error: error.message }
+  revalidatePath('/admin/planes')
+}
+
 export async function startTrial(planId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

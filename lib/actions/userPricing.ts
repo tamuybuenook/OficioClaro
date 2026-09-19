@@ -99,25 +99,29 @@ export async function applyMyIpcUpdate(ipcId: string, newUt: number, ipcValue: n
       .eq('id', item.id)
   }
 
-  const { error } = await supabase
-    .from('profiles')
-    .update({ unit_value: newUt, last_ipc_applied_id: ipcId, updated_at: new Date().toISOString() })
-    .eq('id', user.id)
+  const { error } = await supabase.rpc('set_ut_value', { p_user_id: user.id, p_value: newUt, p_note: `Actualización por IPC (${ipcValue}%)` })
   if (error) return { error: error.message }
+  await supabase.from('profiles').update({ last_ipc_applied_id: ipcId }).eq('id', user.id)
   revalidatePath('/mi-lista')
   revalidatePath('/perfil')
 }
 // Cambia el valor de la UT general: recalcula automáticamente todos los trabajos vinculados.
+// Pasa por set_ut_value() para que quede registrado en el histórico (nunca pisa el anterior).
 export async function setMyUnitValue(unitValue: number) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
 
-  const { error } = await supabase
-    .from('profiles')
-    .update({ unit_value: unitValue, updated_at: new Date().toISOString() })
-    .eq('id', user.id)
+  const { error } = await supabase.rpc('set_ut_value', { p_user_id: user.id, p_value: unitValue, p_note: null })
   if (error) return { error: error.message }
   revalidatePath('/mi-lista')
   revalidatePath('/perfil')
+}
+
+export async function getMyUtHistory() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+  const { data } = await supabase.from('ut_history').select('*').eq('user_id', user.id).order('valid_from', { ascending: false })
+  return data ?? []
 }

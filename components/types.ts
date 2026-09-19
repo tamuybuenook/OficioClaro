@@ -2,6 +2,7 @@ export type Job = {
   id: string
   name: string
   category: string
+  trade: string
   unit: string
   base: number
   regional: number
@@ -11,5 +12,4 @@ export type Job = {
 
 export type View =
   | 'home' | 'prices' | 'my-list' | 'budgets' | 'clients' | 'profile'
-  | 'subscription' | 'payments' | 'admin' | 'users' | 'lists' | 'ipc'
-  | 'reconciliation' | 'trades'
+  | 'subscription' | 'trades'

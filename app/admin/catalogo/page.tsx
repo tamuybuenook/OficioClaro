@@ -4,7 +4,7 @@ import { CatalogoAdmin } from '@/components/admin/catalogo-admin'
 export default async function CatalogoPage() {
   const supabase = await createClient()
 
-  const { data: trades } = await supabase.from('trades').select('id, name, slug').order('name')
+  const { data: trades } = await supabase.from('trades').select('id, name, slug, is_active').order('name')
   const { data: categories } = await supabase.from('categories').select('id, trade_id, name').order('name')
   const { data: services } = await supabase
     .from('services')
@@ -17,12 +17,15 @@ export default async function CatalogoPage() {
     .order('effective_date', { ascending: false })
 
   return (
-    <CatalogoAdmin
-      trades={trades ?? []}
-      categories={categories ?? []}
-      services={services ?? []}
-      versions={(versions ?? []) as any}
-      priceLists={priceLists ?? []}
-    />
+    <div>
+      <p className="text-sm text-[var(--oc-muted)]"><a href="/admin" className="hover:underline">Admin</a> &gt; Listas maestras</p>
+      <CatalogoAdmin
+        trades={trades ?? []}
+        categories={categories ?? []}
+        services={services ?? []}
+        versions={(versions ?? []) as any}
+        priceLists={priceLists ?? []}
+      />
+    </div>
   )
 }

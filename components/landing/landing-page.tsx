@@ -6,15 +6,20 @@ export function LandingPage({ plans }: { plans: Plan[] }) {
   return (
     <main className="min-h-dvh bg-[var(--oc-page)] text-[var(--oc-ink)]">
       {/* HERO */}
-      <section className="mx-auto max-w-[720px] px-5 pb-10 pt-16 text-center md:pt-24">
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--oc-brand)]">OficioClaro</p>
-        <h1 className="mt-3 text-3xl font-bold tracking-tight md:text-5xl">Precios claros para tu oficio.</h1>
-        <p className="mx-auto mt-4 max-w-md text-[var(--oc-muted)]">
-          Encontrá rápidamente una referencia de cuánto cobrar por los trabajos de tu actividad. Vos decidís tu propio precio.
-        </p>
-        <div className="mt-7 flex flex-col items-center gap-3">
-          <a href="/register" className="rounded-xl bg-[var(--oc-coral)] px-6 py-3.5 text-sm font-bold text-white shadow-sm">Empezar gratis</a>
-          <span className="text-xs font-semibold text-[var(--oc-brand)]">30 días gratis · sin tarjeta</span>
+      <section className="relative overflow-hidden bg-[linear-gradient(155deg,var(--oc-hero-from),var(--oc-hero-via)_55%,var(--oc-hero-to))] px-5 pb-16 pt-16 text-center text-white md:pb-24 md:pt-24">
+        <div className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-white/5" />
+        <div className="pointer-events-none absolute -bottom-24 -left-24 size-80 rounded-full bg-white/5" />
+        <div className="relative mx-auto max-w-[720px]">
+          <p className="text-xs font-bold uppercase tracking-[0.25em] text-white/70">OficioClaro</p>
+          <h1 className="mt-3 text-4xl font-bold tracking-tight md:text-6xl">Precios claros para tu oficio.</h1>
+          <p className="mx-auto mt-4 max-w-md text-white/75">
+            Encontrá rápidamente una referencia de cuánto cobrar por los trabajos de tu actividad. Vos decidís tu propio precio.
+          </p>
+          <div className="mt-8 flex flex-col items-center gap-3">
+            <a href="/register" className="rounded-xl bg-[var(--oc-coral)] px-7 py-3.5 text-sm font-bold text-white shadow-lg transition hover:brightness-95">Empezar gratis</a>
+            <a href="/login" className="text-sm font-semibold text-white/80 underline underline-offset-4">Iniciar sesión</a>
+            <span className="mt-1 inline-flex rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold">30 días gratis · sin tarjeta</span>
+          </div>
         </div>
       </section>
 

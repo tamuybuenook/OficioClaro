@@ -1,5 +1,4 @@
 -- 0016_auto_trial.sql
---
 create or replace function handle_new_profile_trial()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare

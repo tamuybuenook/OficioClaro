@@ -8,8 +8,11 @@ __v0_jsx-dev-runtime.ts
 
 # Environment variables
 .env*.local
+.env*.example
+.env*.example pass
 
 # Common ignores
 node_modules
 .next/
 .DS_Store
+.Zips

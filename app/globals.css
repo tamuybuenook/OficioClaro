@@ -154,19 +154,20 @@
 }
 
 :root {
-  --oc-page: #fbfcfa;
+  --oc-page: #eef3f4;
   --oc-surface: #ffffff;
   --oc-surface-muted: #f7f9f7;
   --oc-surface-soft: #f3f6f4;
-  --oc-border: #e2e9e5;
-  --oc-border-soft: #edf0ef;
-  --oc-ink: #24343d;
-  --oc-muted: #74838a;
-  --oc-brand: #173f5f;
-  --oc-brand-strong: #173f5f;
-  --oc-brand-soft: #e8f1f4;
-  --oc-nav-active: #e8f1f4;
-  --oc-coral: #e07a5f;
+  --oc-border: #dce6e6;
+  --oc-border-soft: #e6eded;
+  --oc-ink: #1c2e38;
+  --oc-muted: #64767d;
+  --oc-brand: #123852;
+  --oc-brand-strong: #0f2f45;
+  --oc-brand-soft: #dfeaee;
+  --oc-nav-active: #dfeaee;
+  --oc-coral: #e0693f;
+  --oc-coral-soft: #fbe6dc;
   --oc-on-brand: #ffffff;
   --oc-success-bg: #e8f5ee;
   --oc-success-text: #28734f;
@@ -176,31 +177,38 @@
   --oc-neutral-text: #5f7077;
   --oc-blue-bg: #e8f1f4;
   --oc-blue-text: #315f70;
+  --oc-hero-from: #0c2c42;
+  --oc-hero-via: #123852;
+  --oc-hero-to: #1c5a70;
 }
 
 .dark {
-  --oc-page: #0d1720;
-  --oc-surface: #14232e;
-  --oc-surface-muted: #101d28;
-  --oc-surface-soft: #203946;
-  --oc-border: #3a5968;
-  --oc-border-soft: #223947;
-  --oc-ink: #f3f8f8;
-  --oc-muted: #b5c7cc;
-  --oc-brand: #72c7d5;
-  --oc-brand-strong: #1f7180;
-  --oc-brand-soft: #214c5b;
-  --oc-nav-active: #245464;
+  --oc-page: #0a141c;
+  --oc-surface: #132330;
+  --oc-surface-muted: #0e1c26;
+  --oc-surface-soft: #1c3542;
+  --oc-border: #33505e;
+  --oc-border-soft: #1f3541;
+  --oc-ink: #eef6f6;
+  --oc-muted: #a9bcc2;
+  --oc-brand: #6fc3d2;
+  --oc-brand-strong: #1c6e7d;
+  --oc-brand-soft: #1c3c48;
+  --oc-nav-active: #204652;
   --oc-coral: #ff9b79;
-  --oc-on-brand: #07151d;
+  --oc-coral-soft: #3a2a24;
+  --oc-on-brand: #06131a;
   --oc-success-bg: #173d37;
   --oc-success-text: #8ee0b9;
   --oc-warning-bg: #4a3517;
   --oc-warning-text: #ffd487;
-  --oc-neutral-bg: #263943;
+  --oc-neutral-bg: #23383f;
   --oc-neutral-text: #c6d5d9;
   --oc-blue-bg: #173d50;
   --oc-blue-text: #9dd8f0;
+  --oc-hero-from: #061119;
+  --oc-hero-via: #0c2c42;
+  --oc-hero-to: #16495a;
 }
 
 @layer base {

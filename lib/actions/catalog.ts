@@ -73,6 +73,27 @@ export async function bulkUpsertCatalog(tradeId: string, rows: { category: strin
   return { data: { created, updated } }
 }
 
+export async function createTradeWithList(formData: FormData) {
+  const supabase = await createClient()
+  const name = String(formData.get('name'))
+  const slug = String(formData.get('slug') || name.toLowerCase().replace(/[^a-z0-9]+/g, '-'))
+
+  const { data: trade, error } = await supabase.from('trades').insert({ name, slug }).select().single()
+  if (error) return { error: error.message }
+
+  await supabase.from('price_lists').insert({ trade_id: trade.id, name: `${name} - Lista maestra` })
+  revalidatePath('/admin/catalogo')
+  return { data: trade }
+}
+
+// "Borrar" un oficio = desactivarlo: deja de ofrecerse a usuarios nuevos, sin tocar el historial de precios ya publicado.
+export async function setTradeActive(tradeId: string, isActive: boolean) {
+  const supabase = await createClient()
+  const { error } = await supabase.from('trades').update({ is_active: isActive }).eq('id', tradeId)
+  if (error) return { error: error.message }
+  revalidatePath('/admin/catalogo')
+}
+
 export async function createTrade(formData: FormData) {
   const supabase = await createClient()
   const name = String(formData.get('name'))
