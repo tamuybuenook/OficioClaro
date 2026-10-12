@@ -3,6 +3,7 @@ import { getMyList } from '@/lib/services/myList'
 import { getMyCustomers } from '@/lib/services/customers'
 import { getMySubscription } from '@/lib/services/subscriptions'
 import { getMyEnabledTradeIds, getMyTradeLimit } from '@/lib/services/userTrades'
+import { getMasterUtCurrent } from '@/lib/services/masterUt'
 import { AppShell, type Job } from '@/components/app-shell'
 import { LandingPage } from '@/components/landing/landing-page'
 
@@ -29,12 +30,13 @@ export default async function Page() {
 
   const { data: allTrades } = await supabase.from('trades').select('id, name, slug').eq('is_active', true).order('name')
 
-  const [list, customers, subscription, enabledTradeIds, tradeLimit] = await Promise.all([
+  const [list, customers, subscription, enabledTradeIds, tradeLimit, masterUtValue] = await Promise.all([
     getMyList(),
     getMyCustomers().catch(() => []),
     getMySubscription().catch(() => null),
     user ? getMyEnabledTradeIds(user.id) : Promise.resolve([]),
     user ? getMyTradeLimit(user.id) : Promise.resolve(0),
+    getMasterUtCurrent(),
   ])
 
   const jobs: Job[] = list.map(({ service, pricing }) => ({
@@ -47,6 +49,9 @@ export default async function Page() {
     regional: pricing!.referencePrice,
     personal: pricing!.personalPrice,
     module: (service as any).ut_coefficient != null ? `${(service as any).ut_coefficient} UT` : null,
+    masterUtQty: (service as any).ut_coefficient ?? null,
+    masterUtValue,
+    personalUtQty: pricing!.personalUtCoefficient,
   }))
 
   const profile = {

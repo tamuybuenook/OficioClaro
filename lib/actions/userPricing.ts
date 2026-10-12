@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { round2 } from '@/lib/services/pricing'
+import { applyPercent } from '@/lib/money'
 import { revalidatePath } from 'next/cache'
 
 // Guarda/actualiza "mi precio" para un servicio. No toca la lista general ni el IPC (sección 13).
@@ -9,6 +9,7 @@ export async function setMyPrice(serviceId: string, customPrice: number) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
+  if (!Number.isFinite(customPrice) || customPrice <= 0) return { error: 'El precio debe ser un número mayor a cero.' }
 
   const { error } = await supabase
     .from('user_price_items')
@@ -26,8 +27,21 @@ export async function resetMyPrice(serviceId: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
 
-  const { error } = await supabase.from('user_price_items').delete().eq('user_id', user.id).eq('service_id', serviceId)
+  // Solo quita el precio manual; conserva la UT propia de la tarea si existe.
+  const { error } = await supabase.from('user_price_items').update({ custom_price: null, updated_at: new Date().toISOString() }).eq('user_id', user.id).eq('service_id', serviceId)
   if (error) return { error: error.message }
+  await supabase.from('user_price_items').delete().eq('user_id', user.id).eq('service_id', serviceId).is('custom_price', null).is('custom_ut_coefficient', null)
+  revalidatePath('/mi-lista')
+}
+
+// Quita la UT propia de la tarea (vuelve a UT general × mi UT); conserva el precio manual si existe.
+export async function resetMyTaskUt(serviceId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'No autenticado' }
+  const { error } = await supabase.from('user_price_items').update({ custom_ut_coefficient: null, updated_at: new Date().toISOString() }).eq('user_id', user.id).eq('service_id', serviceId)
+  if (error) return { error: error.message }
+  await supabase.from('user_price_items').delete().eq('user_id', user.id).eq('service_id', serviceId).is('custom_price', null).is('custom_ut_coefficient', null)
   revalidatePath('/mi-lista')
 }
 
@@ -36,6 +50,7 @@ export async function setMyTaskUt(serviceId: string, utCoefficient: number) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
+  if (!Number.isFinite(utCoefficient) || utCoefficient <= 0) return { error: 'La UT de la tarea debe ser un número mayor a cero.' }
 
   const { error } = await supabase
     .from('user_price_items')
@@ -54,7 +69,7 @@ export async function previewMyIpcUpdate() {
   if (!user) return { error: 'No autenticado' }
 
   const { data: profile } = await supabase.from('profiles').select('unit_value, last_ipc_applied_id').eq('id', user.id).single()
-  const { data: ipc } = await supabase.from('ipc_indexes').select('*').order('published_date', { ascending: false }).limit(1).maybeSingle()
+  const { data: ipc } = await supabase.from('ipc_indexes').select('*').order('published_date', { ascending: false }).order('created_at', { ascending: false }).limit(1).maybeSingle()
 
   if (!ipc || !profile) return { error: 'No hay un IPC cargado todavía.' }
   if (ipc.id === profile.last_ipc_applied_id) return { error: 'Ya aplicaste este IPC a tu lista personal.' }
@@ -66,7 +81,7 @@ export async function previewMyIpcUpdate() {
     .not('custom_price', 'is', null)
 
   const currentUt = profile.unit_value
-  const newUt = round2(currentUt * (1 + ipc.value / 100))
+  const newUt = applyPercent(currentUt, ipc.value)
   return {
     data: {
       ipcId: ipc.id,
@@ -79,31 +94,18 @@ export async function previewMyIpcUpdate() {
   }
 }
 
-// Confirmación: guarda la nueva UT y recalcula (con el mismo %) los precios personalizados que
-// el usuario haya cargado a mano. Nunca toca la lista general ni decide por el usuario (sección 8).
-export async function applyMyIpcUpdate(ipcId: string, newUt: number, ipcValue: number) {
+// Confirmación: función SQL atómica e idempotente. Calcula en la base (no confía en valores del cliente),
+// actualiza la UT personal (con historial) y los precios manuales del usuario; nunca toca la lista general.
+export async function applyMyIpcUpdate(ipcId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
 
-  const { data: items } = await supabase
-    .from('user_price_items')
-    .select('id, custom_price')
-    .eq('user_id', user.id)
-    .not('custom_price', 'is', null)
-
-  for (const item of items ?? []) {
-    await supabase
-      .from('user_price_items')
-      .update({ custom_price: round2(item.custom_price! * (1 + ipcValue / 100)), updated_at: new Date().toISOString() })
-      .eq('id', item.id)
-  }
-
-  const { error } = await supabase.rpc('set_ut_value', { p_user_id: user.id, p_value: newUt, p_note: `Actualización por IPC (${ipcValue}%)` })
-  if (error) return { error: error.message }
-  await supabase.from('profiles').update({ last_ipc_applied_id: ipcId }).eq('id', user.id)
+  const { data, error } = await supabase.rpc('apply_my_ipc_update', { p_ipc_id: ipcId })
+  if (error) return { error: error.message.replace(/^.*?ERROR:\s*/, '') }
   revalidatePath('/mi-lista')
   revalidatePath('/perfil')
+  return { data: data as { new_ut: number; prices_updated: number; ipc_value: number } }
 }
 // Cambia el valor de la UT general: recalcula automáticamente todos los trabajos vinculados.
 // Pasa por set_ut_value() para que quede registrado en el histórico (nunca pisa el anterior).
@@ -111,6 +113,7 @@ export async function setMyUnitValue(unitValue: number) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
+  if (!Number.isFinite(unitValue) || unitValue <= 0) return { error: 'El valor de UT debe ser mayor a cero.' }
 
   const { error } = await supabase.rpc('set_ut_value', { p_user_id: user.id, p_value: unitValue, p_note: null })
   if (error) return { error: error.message }

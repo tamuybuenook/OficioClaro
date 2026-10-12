@@ -2,18 +2,27 @@
 
 import { useState, useTransition } from 'react'
 import { createService, updateService, deleteService, createCategory, createTradeWithList, updateTrade, setTradeActive } from '@/lib/actions/catalog'
-import { createVersion, generateItemsFromUt, publishVersion } from '@/lib/actions/priceLists'
+import { setMasterUtValue } from '@/lib/actions/masterUt'
 import { BulkLoadPanel } from '@/components/admin/bulk-load-panel'
+import { VersionsSection, type Version } from '@/components/admin/versions-section'
 
 type Trade = { id: string; name: string; slug: string; is_active: boolean }
 type Category = { id: string; trade_id: string; name: string }
 type Service = { id: string; category_id: string; name: string; unit_label: string; ut_coefficient: number | null }
-type Version = { id: string; version_label: string; status: string; effective_date: string; reference_ut_value: number | null; price_lists: { trade_id: string } }
 type PriceList = { id: string; trade_id: string }
 
-export function CatalogoAdmin({ trades, categories, services, versions, priceLists }: { trades: Trade[]; categories: Category[]; services: Service[]; versions: Version[]; priceLists: PriceList[] }) {
+export function CatalogoAdmin({ trades, categories, services, versions, priceLists, masterUtValue }: { trades: Trade[]; categories: Category[]; services: Service[]; versions: Version[]; priceLists: PriceList[]; masterUtValue: number | null }) {
   const [pending, startTransition] = useTransition()
-  const [refUt, setRefUt] = useState<Record<string, string>>({})
+  const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+
+  // Ejecuta una acción y muestra su resultado (antes los errores se ignoraban en silencio).
+  function run(fn: () => Promise<any>, okText: string) {
+    startTransition(async () => {
+      const res = await fn()
+      if (res && typeof res === 'object' && 'error' in res && res.error) setNotice({ kind: 'error', text: res.error })
+      else setNotice({ kind: 'ok', text: okText })
+    })
+  }
 
   function editUt(service: Service) {
     const value = window.prompt(`UT para "${service.name}"`, String(service.ut_coefficient ?? ''))
@@ -22,7 +31,15 @@ export function CatalogoAdmin({ trades, categories, services, versions, priceLis
     fd.set('name', service.name)
     fd.set('unit_label', service.unit_label)
     fd.set('ut_coefficient', value)
-    startTransition(() => { updateService(service.id, fd) })
+    run(() => updateService(service.id, fd), 'UT actualizada.')
+  }
+
+  function changeMasterUt() {
+    const value = window.prompt('Nuevo valor monetario de la UT maestro (queda historial, no se pisa el anterior)', String(masterUtValue ?? ''))
+    if (!value) return
+    const num = Number(value.replace(',', '.'))
+    if (!num || num <= 0) { setNotice({ kind: 'error', text: 'El valor de UT debe ser un número mayor a cero.' }); return }
+    run(() => setMasterUtValue(num), 'Valor de UT maestro actualizado (el anterior queda en el historial).')
   }
 
   function addService(categoryId: string | null, tradeId: string) {
@@ -40,30 +57,13 @@ export function CatalogoAdmin({ trades, categories, services, versions, priceLis
       if (!catId) {
         const categoryName = window.prompt('Todavía no hay categorías. Nombre de la primera (ej: General)') || 'General'
         const res = await createCategory(tradeId, (() => { const f = new FormData(); f.set('name', categoryName); return f })())
-        if ('error' in res) { window.alert(res.error); return }
+        if ('error' in res) { setNotice({ kind: 'error', text: res.error ?? 'Error' }); return }
         catId = res.data.id
       }
-      await createService(catId, fd)
+      if (!catId) return
+      const res = await createService(catId, fd)
+      setNotice('error' in res && res.error ? { kind: 'error', text: res.error } : { kind: 'ok', text: `Trabajo "${name}" creado.` })
     })
-  }
-
-  function generate(version: Version) {
-    const value = Number(refUt[version.id])
-    if (!value || value <= 0) { window.alert('Cargá un valor de UT de referencia válido.'); return }
-    const ok = window.confirm(`Vas a recalcular los precios de "${version.version_label}" usando UT = $${value.toLocaleString('es-AR')}. ¿Confirmás el ajuste?`)
-    if (!ok) return
-    startTransition(() => { generateItemsFromUt(version.id, value) })
-  }
-
-  function newVersion(priceListId: string) {
-    const label = window.prompt('Nombre de la nueva versión (ej: Noviembre 2026)')
-    if (!label) return
-    const date = window.prompt('Fecha de vigencia (AAAA-MM-DD)')
-    if (!date) return
-    const fd = new FormData()
-    fd.set('version_label', label)
-    fd.set('effective_date', date)
-    startTransition(() => { createVersion(priceListId, fd) })
   }
 
   function addTrade() {
@@ -71,7 +71,7 @@ export function CatalogoAdmin({ trades, categories, services, versions, priceLis
     if (!name) return
     const fd = new FormData()
     fd.set('name', name)
-    startTransition(() => { createTradeWithList(fd) })
+    run(() => createTradeWithList(fd), 'Oficio creado con su lista maestra.')
   }
 
   function renameTrade(trade: Trade) {
@@ -80,30 +80,40 @@ export function CatalogoAdmin({ trades, categories, services, versions, priceLis
     const fd = new FormData()
     fd.set('name', name)
     fd.set('slug', trade.slug)
-    startTransition(() => { updateTrade(trade.id, fd) })
+    run(() => updateTrade(trade.id, fd), 'Oficio renombrado.')
   }
 
   function toggleActive(trade: Trade) {
     const action = trade.is_active ? 'desactivar' : 'reactivar'
     if (!window.confirm(`¿${action} "${trade.name}"? ${trade.is_active ? 'Dejará de ofrecerse a usuarios nuevos (el historial de precios no se toca).' : ''}`)) return
-    startTransition(() => { setTradeActive(trade.id, !trade.is_active) })
+    run(() => setTradeActive(trade.id, !trade.is_active), trade.is_active ? 'Oficio desactivado.' : 'Oficio reactivado.')
   }
 
   return (
     <div className="mx-auto max-w-[1100px] p-5 pb-28 md:p-8">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm text-[var(--oc-muted)]">Administración</p>
           <h1 className="mt-1 text-2xl font-bold text-[var(--oc-ink)]">Catálogo y precios por UT</h1>
         </div>
-        <button onClick={addTrade} className="rounded-lg bg-[var(--oc-brand)] px-3 py-2 text-xs font-bold text-white">+ Nuevo oficio</button>
+        <div className="flex items-center gap-2">
+          <div className="rounded-xl border border-[var(--oc-border)] bg-[var(--oc-surface)] px-3 py-2 text-right">
+            <p className="text-[10px] font-semibold uppercase text-[var(--oc-muted)]">Valor UT maestro vigente</p>
+            <p className="text-sm font-bold text-[var(--oc-brand)]">{masterUtValue ? `$${masterUtValue.toLocaleString('es-AR')}` : 'Sin definir'}</p>
+          </div>
+          <button onClick={changeMasterUt} className="rounded-lg border border-[var(--oc-border)] px-3 py-2 text-xs font-bold">Cambiar</button>
+          <button onClick={addTrade} className="rounded-lg bg-[var(--oc-brand)] px-3 py-2 text-xs font-bold text-white">+ Nuevo oficio</button>
+        </div>
       </div>
+
+      {notice && (
+        <p role={notice.kind === 'error' ? 'alert' : 'status'} className={`mt-4 rounded-xl px-4 py-3 text-sm font-semibold ${notice.kind === 'error' ? 'bg-[#fdecea] text-[var(--oc-coral)]' : 'bg-[var(--oc-success-bg)] text-[var(--oc-success-text)]'}`}>{notice.text}</p>
+      )}
 
       {trades.map((trade) => {
         const tradeCategories = categories.filter((c) => c.trade_id === trade.id)
         const tradeServices = services.filter((s) => tradeCategories.some((c) => c.id === s.category_id))
         const tradeVersions = versions.filter((v) => v.price_lists?.trade_id === trade.id)
-        const draftVersion = tradeVersions.find((v) => v.status === 'draft')
         const priceList = priceLists.find((p) => p.trade_id === trade.id)
 
         return (
@@ -127,7 +137,7 @@ export function CatalogoAdmin({ trades, categories, services, versions, priceLis
                     <td className="font-bold">{s.ut_coefficient ?? '—'}</td>
                     <td className="text-right">
                       <button onClick={() => editUt(s)} className="mr-2 text-xs font-bold text-[var(--oc-brand)]">Editar UT</button>
-                      <button onClick={() => { if (window.confirm(`¿Borrar "${s.name}"?`)) startTransition(() => { deleteService(s.id) }) }} className="text-xs font-bold text-[var(--oc-coral)]">Borrar</button>
+                      <button onClick={() => { if (window.confirm(`¿Borrar "${s.name}"?`)) run(() => deleteService(s.id), 'Trabajo borrado.') }} className="text-xs font-bold text-[var(--oc-coral)]">Borrar</button>
                     </td>
                   </tr>
                 ))}
@@ -138,22 +148,7 @@ export function CatalogoAdmin({ trades, categories, services, versions, priceLis
               <BulkLoadPanel tradeId={trade.id} tradeName={trade.name} />
             </div>
 
-            <div className="mt-4 rounded-xl bg-[var(--oc-surface-muted)] p-4">
-              {draftVersion ? (
-                <>
-                  <p className="text-xs font-semibold text-[var(--oc-muted)]">Versión en borrador: {draftVersion.version_label}</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <input placeholder="Valor UT de referencia" value={refUt[draftVersion.id] ?? ''} onChange={(e) => setRefUt({ ...refUt, [draftVersion.id]: e.target.value })} className="rounded-lg border border-[var(--oc-border)] px-3 py-2 text-sm" />
-                    <button disabled={pending} onClick={() => generate(draftVersion)} className="rounded-lg bg-[var(--oc-brand)] px-3 py-2 text-xs font-bold text-white disabled:opacity-60">Generar precios desde UT</button>
-                    <button disabled={pending} onClick={() => { if (window.confirm('¿Publicar esta versión? No se podrá modificar después.')) startTransition(() => { publishVersion(draftVersion.id) }) }} className="rounded-lg border border-[var(--oc-border)] px-3 py-2 text-xs font-bold">Publicar</button>
-                  </div>
-                </>
-              ) : priceList ? (
-                <button disabled={pending} onClick={() => newVersion(priceList.id)} className="text-xs font-bold text-[var(--oc-brand)]">+ Nueva versión</button>
-              ) : (
-                <p className="text-xs text-[var(--oc-muted)]">Este oficio todavía no tiene lista maestra creada.</p>
-              )}
-            </div>
+            <VersionsSection priceListId={priceList?.id ?? null} versions={tradeVersions} masterUtValue={masterUtValue} tradeName={trade.name} />
           </section>
         )
       })}

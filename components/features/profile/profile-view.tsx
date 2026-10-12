@@ -5,6 +5,7 @@ import { updateMyProfile, updateMyPaymentDetails } from '@/lib/actions/profile'
 import { signOut } from '@/lib/actions/auth'
 import { setMyUnitValue, previewMyIpcUpdate, applyMyIpcUpdate, getMyUtHistory } from '@/lib/actions/userPricing'
 import { money } from '@/lib/format'
+import { ActionForm } from '@/components/ui/action-form'
 import { ChevronRight } from 'lucide-react'
 import type { View } from '@/components/types'
 
@@ -49,7 +50,11 @@ export function Profile({ setView, profile, paymentDetails, subscription }: { se
     const extra = customPricesCount > 0 ? ` y ${customPricesCount} precio(s) personalizado(s)` : ''
     const ok = window.confirm(`IPC ${period}: ${ipcValue}%.\nTu UT${extra} se actualizarían ${ipcValue}%.\nUT: ${money(currentUt)} → ${money(newUt)}.\n¿Confirmás el ajuste?`)
     if (!ok) return
-    startTransition(() => { applyMyIpcUpdate(ipcId, newUt, ipcValue) })
+    startTransition(async () => {
+      const res = await applyMyIpcUpdate(ipcId)
+      if (res && 'error' in res && res.error) { window.alert(res.error); return }
+      if (res?.data) window.alert(`Listo. Tu UT ahora es ${money(res.data.new_ut)} y se actualizaron ${res.data.prices_updated} precio(s) personalizado(s).`)
+    })
   }
 
   return (
@@ -65,7 +70,7 @@ export function Profile({ setView, profile, paymentDetails, subscription }: { se
         </div>
       </div>
 
-      <form action={updateMyProfile} className="mt-6 rounded-2xl border border-[var(--oc-border)] bg-[var(--oc-surface)] p-5">
+      <ActionForm action={updateMyProfile} successMessage="Datos guardados." className="mt-6 flex flex-col rounded-2xl border border-[var(--oc-border)] bg-[var(--oc-surface)] p-5">
         <h2 className="font-bold text-[var(--oc-ink)]">Mis datos</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <label className={labelClass}>Nombre y apellido<input name="full_name" defaultValue={profile.fullName} required className={inputClass} /></label>
@@ -76,9 +81,9 @@ export function Profile({ setView, profile, paymentDetails, subscription }: { se
           <label className={labelClass}>Provincia<input name="province" defaultValue={profile.province ?? ''} className={inputClass} /></label>
         </div>
         <button type="submit" className="mt-4 rounded-xl bg-[var(--oc-brand)] px-4 py-2.5 text-sm font-bold text-white">Guardar datos</button>
-      </form>
+      </ActionForm>
 
-      <form action={updateMyPaymentDetails} className="mt-4 rounded-2xl border border-[var(--oc-border)] bg-[var(--oc-surface)] p-5">
+      <ActionForm action={updateMyPaymentDetails} successMessage="Datos de cobro guardados." className="mt-4 flex flex-col rounded-2xl border border-[var(--oc-border)] bg-[var(--oc-surface)] p-5">
         <h2 className="font-bold text-[var(--oc-ink)]">Datos de cobro</h2>
         <p className="mt-1 text-xs text-[var(--oc-muted)]">Para compartirlos con tus clientes. No es facturación de OficioClaro.</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -91,7 +96,7 @@ export function Profile({ setView, profile, paymentDetails, subscription }: { se
         </div>
         <label className={`${labelClass} mt-3`}>Información adicional<textarea name="notes" defaultValue={paymentDetails?.notes ?? ''} className={`${inputClass} w-full`} rows={2} /></label>
         <button type="submit" className="mt-4 rounded-xl bg-[var(--oc-brand)] px-4 py-2.5 text-sm font-bold text-white">Guardar datos de cobro</button>
-      </form>
+      </ActionForm>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <button onClick={() => setView('clients')} className="flex items-center justify-between rounded-2xl border border-[var(--oc-border)] bg-[var(--oc-surface)] p-4 text-left"><span><span className="block text-xs text-[var(--oc-muted)]">Mis clientes</span><span className="mt-1 block font-bold text-[var(--oc-ink)]">Gestionar contactos</span></span><ChevronRight className="size-4 text-[var(--oc-muted)]" /></button>

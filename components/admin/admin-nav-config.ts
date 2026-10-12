@@ -1,8 +1,14 @@
-export const adminNavGroups = [
-  { label: null, links: [{ href: '/admin', label: 'Inicio' }] },
-  { label: 'Catálogo', links: [{ href: '/admin/catalogo', label: 'Listas maestras / Oficios' }] },
-  { label: 'Usuarios', links: [{ href: '/admin/usuarios', label: 'Usuarios' }] },
-  { label: 'Negocio', links: [{ href: '/admin/planes', label: 'Planes' }, { href: '/admin/suscripciones', label: 'Suscripciones' }] },
-  { label: 'Actualizaciones', links: [{ href: '/admin/ipc', label: 'IPC' }] },
-  { label: 'Sistema', links: [{ href: '/admin/configuracion', label: 'Configuración' }] },
+import { LayoutDashboard, Users, BookOpen, Banknote, Layers, CircleDollarSign, Settings } from 'lucide-react'
+
+export const adminNavItems = [
+  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/admin/usuarios', label: 'Usuarios', icon: Users },
+  { href: '/admin/catalogo', label: 'Listas maestras', icon: BookOpen },
+  { href: '/admin/planes', label: 'Planes', icon: Banknote },
+  { href: '/admin/suscripciones', label: 'Suscripciones', icon: Layers },
+  { href: '/admin/ipc', label: 'IPC y actualizaciones', icon: CircleDollarSign },
+  { href: '/admin/configuracion', label: 'Configuración', icon: Settings },
 ]
+
+// Se mantiene por compatibilidad con quien todavía importe la forma agrupada.
+export const adminNavGroups = [{ label: null, links: adminNavItems }]

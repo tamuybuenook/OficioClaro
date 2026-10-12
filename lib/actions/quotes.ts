@@ -5,19 +5,51 @@ import { getServicePricing } from '@/lib/services/pricing'
 import { round2 } from '@/lib/services/pricing'
 import { revalidatePath } from 'next/cache'
 
+async function logActivity(customerId: string | null, type: string, description?: string) {
+  if (!customerId) return
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+  await supabase.from('client_activity').insert({ user_id: user.id, customer_id: customerId, type, description })
+}
+
+import { getMyQuotes, getQuoteWithItems } from '@/lib/services/quotes'
+
+export async function fetchMyQuotes() {
+  return getMyQuotes()
+}
+
+export async function fetchQuoteDetail(quoteId: string) {
+  return getQuoteWithItems(quoteId)
+}
+
 export async function createQuote(customerId: string | null) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
 
+  const { count } = await supabase.from('quotes').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
+  const number = (count ?? 0) + 1
+
   const { data, error } = await supabase
     .from('quotes')
-    .insert({ user_id: user.id, customer_id: customerId, total: 0 })
+    .insert({ user_id: user.id, customer_id: customerId, total: 0, number, status: 'draft' })
     .select()
     .single()
   if (error) return { error: error.message }
+  await logActivity(customerId, 'presupuesto_creado', `Presupuesto Nº ${String(number).padStart(5, '0')}`)
   revalidatePath('/presupuestos')
   return { data }
+}
+
+export async function setQuoteStatus(quoteId: string, customerId: string | null, status: 'draft' | 'sent' | 'accepted' | 'rejected') {
+  const supabase = await createClient()
+  const { error } = await supabase.from('quotes').update({ status }).eq('id', quoteId)
+  if (error) return { error: error.message }
+  const labels: Record<string, string> = { sent: 'presupuesto_enviado', accepted: 'presupuesto_aceptado', rejected: 'presupuesto_rechazado', draft: 'presupuesto_creado' }
+  await logActivity(customerId, labels[status])
+  revalidatePath('/presupuestos')
+  revalidatePath('/clientes')
 }
 
 async function recalculateTotal(quoteId: string) {

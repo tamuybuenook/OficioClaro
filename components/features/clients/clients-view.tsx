@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { createCustomer, updateCustomer, deleteCustomer } from '@/lib/actions/customers'
 import { Trash2, Pencil } from 'lucide-react'
+import { ClientDetail } from './client-detail'
 
 type Customer = { id: string; name: string; phone: string | null; email: string | null; address: string | null }
 
@@ -23,6 +24,7 @@ function ClientForm({ defaultValues, onSubmit, pending, submitLabel }: { default
 export function ClientsUpdated({ customers }: { customers: Customer[] }) {
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [openId, setOpenId] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
   function handleCreate(formData: FormData) {
@@ -34,6 +36,8 @@ export function ClientsUpdated({ customers }: { customers: Customer[] }) {
     startTransition(() => { updateCustomer(id, formData) })
     setEditingId(null)
   }
+
+  if (openId) return <ClientDetail customerId={openId} onBack={() => setOpenId(null)} />
 
   return (
     <div className="mx-auto max-w-[1040px] p-5 pb-28 md:p-8">
@@ -60,7 +64,7 @@ export function ClientsUpdated({ customers }: { customers: Customer[] }) {
               </>
             ) : (
               <>
-                <div className="flex items-center gap-3">
+                <div onClick={() => setOpenId(c.id)} className="flex cursor-pointer items-center gap-3">
                   <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--oc-brand-soft)] text-sm font-bold text-[var(--oc-brand)]">{c.name.split(' ').map((n) => n[0]).join('')}</div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold text-[var(--oc-ink)]">{c.name}</p>
@@ -69,10 +73,10 @@ export function ClientsUpdated({ customers }: { customers: Customer[] }) {
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   {c.phone ? (
-                    <a href={`https://wa.me/${c.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="flex items-center justify-center rounded-lg bg-[#25D366] px-2 py-2 text-xs font-bold text-white">WhatsApp</a>
+                    <a href={`https://wa.me/${c.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center justify-center rounded-lg bg-[#25D366] px-2 py-2 text-xs font-bold text-white">WhatsApp</a>
                   ) : <span />}
-                  <button onClick={() => setEditingId(c.id)} className="flex items-center justify-center gap-1 rounded-lg border border-[var(--oc-border)] px-2 py-2 text-xs font-bold text-[var(--oc-brand)]"><Pencil className="size-3.5" />Editar</button>
-                  <button onClick={() => { if (window.confirm(`¿Borrar a ${c.name}?`)) startTransition(() => { deleteCustomer(c.id) }) }} className="flex items-center justify-center gap-1 rounded-lg border border-[var(--oc-border)] px-2 py-2 text-xs font-bold text-[var(--oc-coral)]"><Trash2 className="size-3.5" />Borrar</button>
+                  <button onClick={(e) => { e.stopPropagation(); setEditingId(c.id) }} className="flex items-center justify-center gap-1 rounded-lg border border-[var(--oc-border)] px-2 py-2 text-xs font-bold text-[var(--oc-brand)]"><Pencil className="size-3.5" />Editar</button>
+                  <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`¿Borrar a ${c.name}?`)) startTransition(() => { deleteCustomer(c.id) }) }} className="flex items-center justify-center gap-1 rounded-lg border border-[var(--oc-border)] px-2 py-2 text-xs font-bold text-[var(--oc-coral)]"><Trash2 className="size-3.5" />Borrar</button>
                 </div>
               </>
             )}

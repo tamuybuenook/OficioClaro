@@ -1,24 +1,16 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { createIpcIndex, applyIpcToAllPriceLists } from '@/lib/actions/ipc'
+import { createIpcIndex, applyIpcToAllPriceLists, type IpcApplyResult } from '@/lib/actions/ipc'
+import { targetEffectiveDate, monthName } from '@/lib/ipc-dates'
 import { CalendarDays, Upload } from 'lucide-react'
 
 type Ipc = { id: string; year: number; month: number; value: number; published_date: string; status: string }
 type Sample = { name: string; basePrice: number } | null
 
-const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
-
-// Misma regla que lib/services/ipc.ts (publicación -> mes siguiente), duplicada acá
-// porque este componente corre en el cliente y ese módulo no es client-safe.
 function nextMonthLabel(publishedDate: string) {
   if (!publishedDate) return null
-  const [y, m] = publishedDate.split('-').map(Number)
-  if (!y || !m) return null
-  const d = new Date(Date.UTC(y, m - 1, 1))
-  d.setUTCMonth(d.getUTCMonth() + 1)
-  const month = MESES[d.getUTCMonth()]
-  return `${month.charAt(0).toUpperCase()}${month.slice(1)} ${d.getUTCFullYear()}`
+  try { return targetEffectiveDate(publishedDate).label } catch { return null }
 }
 
 function money(v: number) {
@@ -31,6 +23,8 @@ export function IpcPanel({ ipcs, appliedLabel, sample }: { ipcs: Ipc[]; appliedL
   const [monthValue, setMonthValue] = useState('')
   const [published, setPublished] = useState('')
   const [message, setMessage] = useState<string | null>(null)
+  const [messageIsError, setMessageIsError] = useState(false)
+  const [applyResult, setApplyResult] = useState<(IpcApplyResult & { label: string }) | null>(null)
 
   const last = ipcs[0]
   const pendingIpc = ipcs.find((i) => i.status !== 'applied')
@@ -38,12 +32,13 @@ export function IpcPanel({ ipcs, appliedLabel, sample }: { ipcs: Ipc[]; appliedL
   const previewValue = Number(percent || last?.value || 0)
 
   function reset() {
-    setPercent(''); setMonthValue(''); setPublished(''); setMessage(null)
+    setPercent(''); setMonthValue(''); setPublished(''); setMessage(null); setMessageIsError(false)
   }
 
   function handleCreate() {
     if (!percent || !monthValue || !published) { setMessage('Completá todos los campos.'); return }
     const [year, month] = monthValue.split('-')
+    setApplyResult(null)
     const fd = new FormData()
     fd.set('year', year)
     fd.set('month', String(Number(month)))
@@ -51,7 +46,8 @@ export function IpcPanel({ ipcs, appliedLabel, sample }: { ipcs: Ipc[]; appliedL
     fd.set('published_date', published)
     startTransition(async () => {
       const res = await createIpcIndex(fd)
-      if (res && 'error' in res) { setMessage(res.error); return }
+      if (res && 'error' in res) { setMessage(res.error ?? 'Error'); setMessageIsError(true); return }
+      setMessageIsError(false)
       setMessage('IPC guardado.')
       reset()
     })
@@ -61,7 +57,10 @@ export function IpcPanel({ ipcs, appliedLabel, sample }: { ipcs: Ipc[]; appliedL
     if (!window.confirm('Esto genera una versión borrador por oficio con el % aplicado. ¿Confirmás?')) return
     startTransition(async () => {
       const res = await applyIpcToAllPriceLists(id)
-      setMessage('error' in res ? res.error : 'IPC aplicado: nuevas versiones generadas en borrador.')
+      if ('error' in res) { setMessage(res.error ?? 'Error'); setMessageIsError(true); setApplyResult(null); return }
+      setApplyResult(res.data)
+      setMessageIsError(false)
+      setMessage(`IPC aplicado: ${res.data.created.length} versión(es) "${res.data.label}" generadas en borrador. Revisalas y publicalas desde Listas maestras.`)
     })
   }
 
@@ -138,7 +137,24 @@ export function IpcPanel({ ipcs, appliedLabel, sample }: { ipcs: Ipc[]; appliedL
             </div>
           </div>
         )}
-        {message && <p className="mt-3 text-sm font-semibold text-[var(--oc-ink)]">{message}</p>}
+        {message && <p role={messageIsError ? 'alert' : 'status'} className={`mt-3 text-sm font-semibold ${messageIsError ? 'text-[var(--oc-coral)]' : 'text-[var(--oc-ink)]'}`}>{message}</p>}
+        {applyResult && (
+          <div className="mt-3 rounded-xl border border-[var(--oc-border)] bg-[var(--oc-surface-muted)] p-4 text-sm">
+            <p className="font-bold text-[var(--oc-ink)]">Resultado de la actualización</p>
+            <ul className="mt-2 list-disc pl-5 text-[var(--oc-ink)]">
+              {applyResult.created.map((c) => <li key={c.version_id}>{c.trade}: {c.items} precio(s) actualizados (borrador).</li>)}
+            </ul>
+            {applyResult.skipped.length > 0 && (
+              <>
+                <p className="mt-3 font-bold text-[var(--oc-coral)]">Listas que NO se actualizaron</p>
+                <ul className="mt-1 list-disc pl-5 text-[var(--oc-ink)]">
+                  {applyResult.skipped.map((s) => <li key={s.trade}><strong>{s.trade}:</strong> {s.reason}</li>)}
+                </ul>
+                <p className="mt-2 text-xs text-[var(--oc-muted)]">Estas listas requieren una versión manual: este IPC ya no se puede volver a aplicar.</p>
+              </>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="mt-5 rounded-2xl border border-[var(--oc-border)] bg-[var(--oc-surface)] p-5">
@@ -156,7 +172,7 @@ export function IpcPanel({ ipcs, appliedLabel, sample }: { ipcs: Ipc[]; appliedL
               {ipcs.map((row) => (
                 <tr key={row.id} className="border-b border-[var(--oc-border-soft)] last:border-0">
                   <td className="px-3 py-4 font-bold text-[var(--oc-brand)]">{row.value}%</td>
-                  <td className="text-[var(--oc-ink)]">{MESES[row.month - 1]?.replace(/^./, (c) => c.toUpperCase())} {row.year}</td>
+                  <td className="text-[var(--oc-ink)]">{monthName(row.month - 1)} {row.year}</td>
                   <td className="text-[var(--oc-muted)]">{row.published_date}</td>
                   <td className="text-[var(--oc-ink)]">{nextMonthLabel(row.published_date)}</td>
                   <td>

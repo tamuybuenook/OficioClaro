@@ -13,3 +13,10 @@ describe('targetEffectiveDate', () => {
     expect(targetEffectiveDate('2026-10-15')).toEqual({ date: '2026-11-01', label: 'Noviembre 2026' })
   })
 })
+
+describe('targetEffectiveDate: entradas inválidas', () => {
+  it('rechaza fechas mal formadas', () => {
+    expect(() => targetEffectiveDate('')).toThrow()
+    expect(() => targetEffectiveDate('2026-13-01')).toThrow()
+  })
+})

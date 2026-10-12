@@ -1,4 +1,5 @@
 import { signIn } from '@/lib/actions/auth'
+import { ActionForm } from '@/components/ui/action-form'
 import { GoogleButton } from '@/components/auth/google-button'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
@@ -34,11 +35,11 @@ export default async function LoginPage() {
           </div>
           <div className="my-6 flex items-center gap-3 text-xs text-[var(--oc-muted)]"><span className="h-px flex-1 bg-[var(--oc-border)]" />o con tu email<span className="h-px flex-1 bg-[var(--oc-border)]" /></div>
 
-          <form action={signIn} className="flex flex-col gap-3">
+          <ActionForm action={signIn} className="flex flex-col gap-3">
             <input name="email" type="email" placeholder="Email" required className="rounded-xl border border-[var(--oc-border)] bg-[var(--oc-surface)] p-3.5 text-sm outline-none focus:border-[var(--oc-brand)]" />
             <input name="password" type="password" placeholder="Contraseña" required className="rounded-xl border border-[var(--oc-border)] bg-[var(--oc-surface)] p-3.5 text-sm outline-none focus:border-[var(--oc-brand)]" />
             <button type="submit" className="mt-1 rounded-xl bg-[var(--oc-coral)] p-3.5 text-sm font-bold text-white shadow-sm transition hover:brightness-95">Entrar</button>
-          </form>
+          </ActionForm>
 
           <p className="mt-6 text-center text-sm text-[var(--oc-muted)]">¿No tenés cuenta? <a href="/register" className="font-bold text-[var(--oc-brand)] underline">Creá una gratis</a></p>
         </div>

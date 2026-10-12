@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { getAdminContext, cleanDbError } from '@/lib/auth/assert-admin'
 
 async function logAudit(entity: string, entityId: string | null, action: string, newValue: unknown) {
   const supabase = await createClient()
@@ -15,73 +16,39 @@ async function logAudit(entity: string, entityId: string | null, action: string,
   })
 }
 
-// ---------- trades ----------
-// Carga administrativa por oficio (Bloque de cierre, sección 2): el admin pega
-// "Categoría;Trabajo;UT" para UNA actividad y acá se crean/actualizan categorías
-// y servicios. No genera precios ni versiones: eso sigue el flujo ya existente
-// (crear versión -> generar desde UT -> publicar).
+// Carga administrativa por oficio: el admin pega "Categoría;Trabajo;UT". Una sola transacción SQL:
+// valida todo antes de escribir (si una fila falla, no se guarda nada). Idempotente. No genera precios ni versiones.
 export async function bulkUpsertCatalog(tradeId: string, rows: { category: string; name: string; ut: number }[]) {
-  const supabase = await createClient()
-  let created = 0
-  let updated = 0
-
-  const categoryCache = new Map<string, string>()
-
-  for (const row of rows) {
-    let categoryId = categoryCache.get(row.category)
-    if (!categoryId) {
-      const { data: existing } = await supabase
-        .from('categories')
-        .select('id')
-        .eq('trade_id', tradeId)
-        .eq('name', row.category)
-        .maybeSingle()
-      if (existing) {
-        categoryId = existing.id
-      } else {
-        const { data: newCat, error } = await supabase
-          .from('categories')
-          .insert({ trade_id: tradeId, name: row.category })
-          .select('id')
-          .single()
-        if (error) return { error: `Categoría "${row.category}": ${error.message}` }
-        categoryId = newCat.id
-      }
-      categoryCache.set(row.category, categoryId)
-    }
-
-    const { data: existingService } = await supabase
-      .from('services')
-      .select('id')
-      .eq('category_id', categoryId)
-      .eq('name', row.name)
-      .maybeSingle()
-
-    if (existingService) {
-      const { error } = await supabase.from('services').update({ ut_coefficient: row.ut }).eq('id', existingService.id)
-      if (error) return { error: `"${row.name}": ${error.message}` }
-      updated++
-    } else {
-      const { error } = await supabase.from('services').insert({ category_id: categoryId, name: row.name, unit_label: 'Trabajo', ut_coefficient: row.ut })
-      if (error) return { error: `"${row.name}": ${error.message}` }
-      created++
-    }
-  }
-
-  await logAudit('services', tradeId, 'bulk_upsert', { created, updated })
+  const ctx = await getAdminContext()
+  if ('error' in ctx) return { error: ctx.error }
+  const { data, error } = await ctx.supabase.rpc('bulk_upsert_catalog', { p_trade_id: tradeId, p_rows: rows })
+  if (error) return { error: cleanDbError(error.message) }
   revalidatePath('/admin/catalogo')
-  return { data: { created, updated } }
+  const r = data as { created: number; updated: number; categories_created: number }
+  return { data: { created: r.created, updated: r.updated } }
+}
+
+function slugify(name: string) {
+  return name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 }
 
 export async function createTradeWithList(formData: FormData) {
-  const supabase = await createClient()
-  const name = String(formData.get('name'))
-  const slug = String(formData.get('slug') || name.toLowerCase().replace(/[^a-z0-9]+/g, '-'))
+  const ctx = await getAdminContext()
+  if ('error' in ctx) return { error: ctx.error }
+  const name = String(formData.get('name') ?? '').trim()
+  if (!name) return { error: 'El nombre del oficio es obligatorio.' }
+  const slug = String(formData.get('slug') || slugify(name))
+  if (!slug) return { error: 'No se pudo generar un identificador válido para el oficio.' }
 
-  const { data: trade, error } = await supabase.from('trades').insert({ name, slug }).select().single()
-  if (error) return { error: error.message }
+  const { data: trade, error } = await ctx.supabase.from('trades').insert({ name, slug }).select().single()
+  if (error) return { error: error.code === '23505' ? `Ya existe un oficio llamado "${name}".` : cleanDbError(error.message) }
 
-  await supabase.from('price_lists').insert({ trade_id: trade.id, name: `${name} - Lista maestra` })
+  const { error: listError } = await ctx.supabase.from('price_lists').insert({ trade_id: trade.id, name: `${name} - Lista maestra` })
+  if (listError) {
+    await ctx.supabase.from('trades').delete().eq('id', trade.id) // sin dependientes todavía: se revierte
+    return { error: `No se pudo crear la lista maestra: ${cleanDbError(listError.message)}` }
+  }
+  await logAudit('trades', trade.id, 'create', trade)
   revalidatePath('/admin/catalogo')
   return { data: trade }
 }
@@ -101,7 +68,7 @@ export async function createTrade(formData: FormData) {
   const { data, error } = await supabase.from('trades').insert({ name, slug }).select().single()
   if (error) return { error: error.message }
   await logAudit('trades', data.id, 'create', data)
-  revalidatePath('/admin/oficios')
+  revalidatePath('/admin/catalogo')
   return { data }
 }
 
@@ -112,7 +79,7 @@ export async function updateTrade(id: string, formData: FormData) {
   const { error } = await supabase.from('trades').update({ name, slug }).eq('id', id)
   if (error) return { error: error.message }
   await logAudit('trades', id, 'update', { name, slug })
-  revalidatePath('/admin/oficios')
+  revalidatePath('/admin/catalogo')
 }
 
 export async function deleteTrade(id: string) {
@@ -120,7 +87,7 @@ export async function deleteTrade(id: string) {
   const { error } = await supabase.from('trades').delete().eq('id', id)
   if (error) return { error: error.message }
   await logAudit('trades', id, 'delete', null)
-  revalidatePath('/admin/oficios')
+  revalidatePath('/admin/catalogo')
 }
 
 // ---------- categories ----------
@@ -134,7 +101,7 @@ export async function createCategory(tradeId: string, formData: FormData) {
     .single()
   if (error) return { error: error.message }
   await logAudit('categories', data.id, 'create', data)
-  revalidatePath('/admin/oficios')
+  revalidatePath('/admin/catalogo')
   return { data }
 }
 
@@ -143,7 +110,15 @@ export async function deleteCategory(id: string) {
   const { error } = await supabase.from('categories').delete().eq('id', id)
   if (error) return { error: error.message }
   await logAudit('categories', id, 'delete', null)
-  revalidatePath('/admin/oficios')
+  revalidatePath('/admin/catalogo')
+}
+
+function parseUt(raw: FormDataEntryValue | null): { value: number | null } | { error: string } {
+  const text = String(raw ?? '').trim().replace(',', '.')
+  if (!text) return { value: null }
+  const n = Number(text)
+  if (!Number.isFinite(n) || n <= 0) return { error: 'La UT debe ser un número mayor a cero (ej: 2,5).' }
+  return { value: n }
 }
 
 // ---------- services ----------
@@ -151,8 +126,9 @@ export async function createService(categoryId: string, formData: FormData) {
   const supabase = await createClient()
   const name = String(formData.get('name'))
   const unit_label = String(formData.get('unit_label') || 'Trabajo')
-  const utRaw = formData.get('ut_coefficient')
-  const ut_coefficient = utRaw ? Number(utRaw) : null
+  const parsed = parseUt(formData.get('ut_coefficient'))
+  if ('error' in parsed) return { error: parsed.error }
+  const ut_coefficient = parsed.value
 
   const { data, error } = await supabase
     .from('services')
@@ -161,7 +137,7 @@ export async function createService(categoryId: string, formData: FormData) {
     .single()
   if (error) return { error: error.message }
   await logAudit('services', data.id, 'create', data)
-  revalidatePath('/admin/oficios')
+  revalidatePath('/admin/catalogo')
   return { data }
 }
 
@@ -169,8 +145,9 @@ export async function updateService(id: string, formData: FormData) {
   const supabase = await createClient()
   const name = String(formData.get('name'))
   const unit_label = String(formData.get('unit_label') || 'Trabajo')
-  const utRaw = formData.get('ut_coefficient')
-  const ut_coefficient = utRaw ? Number(utRaw) : null
+  const parsed = parseUt(formData.get('ut_coefficient'))
+  if ('error' in parsed) return { error: parsed.error }
+  const ut_coefficient = parsed.value
 
   const { error } = await supabase
     .from('services')
@@ -178,7 +155,8 @@ export async function updateService(id: string, formData: FormData) {
     .eq('id', id)
   if (error) return { error: error.message }
   await logAudit('services', id, 'update', { name, unit_label, ut_coefficient })
-  revalidatePath('/admin/oficios')
+  revalidatePath('/admin/catalogo')
+  return { data: { id } }
 }
 
 export async function deleteService(id: string) {
@@ -186,5 +164,6 @@ export async function deleteService(id: string) {
   const { error } = await supabase.from('services').delete().eq('id', id)
   if (error) return { error: error.message }
   await logAudit('services', id, 'delete', null)
-  revalidatePath('/admin/oficios')
+  revalidatePath('/admin/catalogo')
+  return { data: { id } }
 }

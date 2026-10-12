@@ -8,6 +8,9 @@ export type Job = {
   regional: number
   personal: number
   module: string | null
+  masterUtQty: number | null
+  masterUtValue: number | null
+  personalUtQty: number | null
 }
 
 export type View =

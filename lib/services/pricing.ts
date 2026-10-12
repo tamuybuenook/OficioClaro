@@ -1,12 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
 
-export function round2(n: number): number {
-  return Math.round(n * 100) / 100
-}
+import { mulRound2, round2 } from '@/lib/money'
 
-// coeficiente UT × valor UT del profesional (sección 12)
+export { round2 }
+
+// REGLA ÚNICA de precio por UT (maestra y personal): round(coeficiente × valor de UT, 2),
+// aritmética decimal exacta; idéntica a la de PostgreSQL (generate_version_items_from_ut).
 export function calculateUtPrice(coefficient: number, unitValue: number): number {
-  return round2(coefficient * unitValue)
+  return mulRound2(coefficient, unitValue)
 }
 
 // "Mi precio": prioridad = precio explícito > UT propia para esa tarea > UT general × mi UT > general
@@ -33,6 +34,7 @@ export interface ServicePricing {
   referencePrice: number
   personalPrice: number
   personalSource: 'custom' | 'custom-ut' | 'ut' | 'reference'
+  personalUtCoefficient: number | null
 }
 
 // Orquestador: junta lista vigente + precio personalizado del profesional.
@@ -104,5 +106,6 @@ export async function getServicePricing(serviceId: string, userId?: string | nul
     referencePrice,
     personalPrice: personal.price,
     personalSource: personal.source,
+    personalUtCoefficient: customUtCoefficient,
   }
 }
