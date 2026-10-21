@@ -45,6 +45,10 @@ describe('computeMpSettings', () => {
     expect(computeMpSettings(full({ APP_URL: 'https://x.com/app' })).appUrl.issues.join(' ')).toMatch(/origen/)
     expect(computeMpSettings(full({ MP_ENV: 'production', VERCEL_ENV: 'production', APP_URL: 'https://localhost' })).appUrl.issues.join(' ')).toMatch(/localhost/)
     const s = computeMpSettings(full({ APP_URL: 'no es url' })); expect(s.webhookUrl).toBeNull()
+    for (const v of ['https://oficioclaro.vercel.app\nCopiar', 'https://oficioclaro.vercel.app\tCopiar', 'https://oficioclaro.vercel.app Copiar']) {
+      const d = computeMpSettings(full({ APP_URL: v }))
+      expect(d.webhookUrl).toBeNull(); expect(d.reconcileUrl).toBeNull(); expect(d.appUrl.issues.join(' ')).toMatch(/Copiar|saltos de línea/)
+    }
   })
 })
 

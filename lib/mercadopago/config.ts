@@ -18,6 +18,9 @@ function normalizeAppUrl(raw: string | undefined): string | null {
   const q = v.match(/^(["'])(.*)\1$/s)
   if (q) v = q[2].trim()
   if (!v) return ''
+  // Espacios, saltos de línea, tabs o caracteres de control en el MEDIO (típico: texto "Copiar" pegado con un salto de línea):
+  // new URL() los ignora y fusiona el texto con el dominio (…appcopiar), así que se rechaza el valor entero.
+  if (/[\s\u0000-\u001f\u007f\u00a0]/.test(v)) return null
   // Se rechaza (no se descarta en silencio) todo lo que no sea http(s)://host[:puerto]: usuario/clave incrustados (incluido '@'
   // vacío), host vacío o con etiquetas inválidas, y cualquier otro protocolo.
   if (!/^https?:\/\/[^/?#\s@]/i.test(v) || /^[a-z][a-z0-9+.-]*:\/\/[^/?#]*@/i.test(v)) return null

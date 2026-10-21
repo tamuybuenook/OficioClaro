@@ -162,3 +162,24 @@ describe('APP_URL: rechazo de formatos peligrosos o inválidos', () => {
     expect(getMpConfig(env({ APP_URL: 'https://oficioclaro.vercel.app', MP_ENV: 'production', VERCEL_ENV: 'production' })).appUrl).toBe('https://oficioclaro.vercel.app')
   })
 })
+
+describe('APP_URL: texto pegado en el medio (caso real "Copiar")', () => {
+  const ORIGIN = 'https://oficioclaro.vercel.app'
+  it.each([
+    ['salto de línea + Copiar', `${ORIGIN}\nCopiar`],
+    ['CRLF + Copiar', `${ORIGIN}\r\nCopiar`],
+    ['tab + Copiar', `${ORIGIN}\tCopiar`],
+    ['espacio + Copiar', `${ORIGIN} Copiar`],
+    ['espacio duro + Copiar', `${ORIGIN}\u00a0Copiar`],
+    ['Copiar entre dos líneas', `${ORIGIN}\nCopiar\n`],
+    ['carácter de control', `${ORIGIN}\u0007x`],
+    ['con comillas y texto extra', `"${ORIGIN}\nCopiar"`],
+  ])('%s → MpConfigError (nunca …appcopiar)', (_n, v) => {
+    expect(() => getMpConfig(env({ APP_URL: v }))).toThrow(MpConfigError)
+    expect(() => getMpConfig(env({ APP_URL: v, VERCEL_ENV: 'production', MP_ALLOW_TEST_IN_PRODUCTION: 'true' }))).toThrow(/APP_URL/)
+  })
+  it('un valor limpio con salto de línea solo al final sigue funcionando', () => {
+    expect(getMpConfig(env({ APP_URL: `${ORIGIN}\n` })).appUrl).toBe(ORIGIN)
+  })
+})
+

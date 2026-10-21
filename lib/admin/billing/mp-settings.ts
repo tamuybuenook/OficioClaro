@@ -64,7 +64,8 @@ export function computeMpSettings(env: NodeJS.ProcessEnv = process.env): MpSetti
   if (!value) issues.push('APP_URL no está definida.')
   else {
     let url: URL | null = null
-    try { url = new URL(value) } catch { issues.push('APP_URL no es una URL válida.') }
+    if (/[\s\u0000-\u001f\u007f\u00a0"']/.test(value)) issues.push('APP_URL no es una URL válida: contiene espacios, saltos de línea, comillas o texto extra (¿se pegó "Copiar"?). Escribila a mano.')
+    else try { url = new URL(value) } catch { issues.push('APP_URL no es una URL válida.') }
     if (url) {
       if (url.protocol !== 'https:') issues.push(mpEnv === 'production' ? 'En producción APP_URL debe ser https.' : 'Mercado Pago requiere https para el retorno automático (auto_return).')
       if (['localhost', '127.0.0.1'].includes(url.hostname) && mpEnv === 'production') issues.push('APP_URL apunta a localhost en producción.')
