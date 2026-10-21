@@ -27,7 +27,7 @@ Embeds `plans(...)` ambiguos desde `subscriptions` (2 FK); prueba SQL agenda n.�
 1. Cerrar etapa 3 (recuperación: el enlace del correo vuelve a la Site URL; revisar Redirect URLs `https://oficioclaro.vercel.app/**`, `APP_URL`, redeploy; y probar «Continuar con Google»).
 2. Probar 6c en proyecto de prueba (ver `docs/INFORME_CIERRE_ETAPA6C.md`). Decidir qué ve un usuario suspendido por el admin.
 3. ~~Planes de 3 y 6 meses~~ **Código entregado** (`docs/INFORME_CIERRE_PLANES_3_6_MESES.md`): migración 0032 escrita y probada en Postgres local (NO aplicada en Supabase). Falta: aplicarla en el proyecto de prueba, cargar los planes y probar en Sandbox de MP.
-4. Etapa 7: **7a entregada** (migración 0033 sin aplicar; `docs/INFORME_CIERRE_ETAPA7A.md`). Falta **7b**: llamar `syncNotifications` al cargar el inicio, leer `notifications`, banner con prioridad + botón descartar (reemplaza/complementa el aviso calculado de 6c). Luego 7 cierra. Después: 8 emails+cron (proveedor SMTP pendiente; el de Supabase solo envía a miembros del equipo), 9 Sandbox, 10–11 optimización. Más adelante: cerrar el bloqueo también en RLS.
+4. **Etapa 7 cerrada** (7a tabla/sync + 7b banner; `docs/INFORME_CIERRE_ETAPA7A.md` y `7B.md`; migración 0033 sin aplicar). Siguiente: etapa 8 (emails + cron; necesita decidir proveedor de email), 9 Sandbox, 10–11 optimización. Más adelante: cerrar el bloqueo también en RLS.
 
 ## Próximo paso
 Planes 3/6 meses entregados (0032 sin aplicar). Las pruebas SQL ahora se pueden correr en el entorno de Claude (Postgres 16 local).

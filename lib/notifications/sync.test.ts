@@ -26,7 +26,7 @@ afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe('syncNotifications', () => {
   it('cobro fallido: envía el aviso deseado a la base', async () => {
-    const r = await syncNotifications('u1', fake)
+    const r = await syncNotifications('u1', { db: fake })
     expect(r).toMatchObject({ ok: true, skipped: false, desired: 1, created: 1 })
     expect(rpcCalls).toHaveLength(1)
     expect(rpcCalls[0].name).toBe('sync_notifications'); expect(rpcCalls[0].args.p_user_id).toBe('u1')
@@ -34,41 +34,46 @@ describe('syncNotifications', () => {
   })
   it('si la base ya está al día, no escribe (ahorra una llamada por carga de página)', async () => {
     db.notifications = ok([{ dedupe_key: 'payment_failed:s1:2026-11-12' }])
-    expect(await syncNotifications('u1', fake)).toMatchObject({ ok: true, skipped: true, desired: 1 })
+    expect(await syncNotifications('u1', { db: fake })).toMatchObject({ ok: true, skipped: true, desired: 1 })
     expect(rpcCalls).toHaveLength(0)
   })
   it('lo que ya no corresponde se resuelve (lista vacía) cuando hay abiertos', async () => {
     db.subscriptions = sub({ status: 'active', end_date: '2026-12-30' }); db.notifications = ok([{ dedupe_key: 'payment_failed:s1:2026-11-12' }])
-    await syncNotifications('u1', fake)
+    await syncNotifications('u1', { db: fake })
     expect(rpcCalls[0].args.p_desired).toEqual([])
   })
   it('sin avisos abiertos ni deseados: no hace nada', async () => {
     db.subscriptions = sub({ status: 'active', end_date: '2026-12-30' })
-    expect(await syncNotifications('u1', fake)).toMatchObject({ ok: true, skipped: true, desired: 0 })
+    expect(await syncNotifications('u1', { db: fake })).toMatchObject({ ok: true, skipped: true, desired: 0 })
   })
   it('pago confirmado reciente: genera el aviso informativo (fecha en hora argentina)', async () => {
     db.subscriptions = sub({ status: 'active', end_date: '2026-12-30' }); db.payments = ok({ id: 'p9', applied_at: '2026-11-09T02:00:00Z', updated_at: '2026-11-09T02:00:00Z' })
-    await syncNotifications('u1', fake)
+    await syncNotifications('u1', { db: fake })
     expect(rpcCalls[0].args.p_desired[0]).toMatchObject({ kind: 'payment_confirmed', dedupe_key: 'payment_confirmed:s1:p9', due_date: '2026-11-08', source: 'payment' })
   })
   it('error técnico al leer la suscripción: NO escribe nada', async () => {
     db.subscriptions = { data: null, error: { code: 'XX000' } }
-    expect(await syncNotifications('u1', fake)).toEqual({ ok: false, reason: 'degraded' })
+    expect(await syncNotifications('u1', { db: fake })).toEqual({ ok: false, reason: 'degraded' })
     expect(rpcCalls).toHaveLength(0)
   })
   it('error al leer pagos o avisos: NO escribe nada', async () => {
     db.payments = { data: null, error: { code: 'XX000' } }
-    expect(await syncNotifications('u1', fake)).toEqual({ ok: false, reason: 'read_error' })
+    expect(await syncNotifications('u1', { db: fake })).toEqual({ ok: false, reason: 'read_error' })
     db.payments = ok(null); db.notifications = { data: null, error: { code: 'XX000' } }
-    expect(await syncNotifications('u1', fake)).toEqual({ ok: false, reason: 'read_error' })
+    expect(await syncNotifications('u1', { db: fake })).toEqual({ ok: false, reason: 'read_error' })
     expect(rpcCalls).toHaveLength(0)
   })
   it('error de la base al sincronizar: devuelve fallo, no lanza', async () => {
     rpcResult = { data: null, error: { code: '42501' } }
-    expect(await syncNotifications('u1', fake)).toEqual({ ok: false, reason: 'rpc_error' })
+    expect(await syncNotifications('u1', { db: fake })).toEqual({ ok: false, reason: 'rpc_error' })
+  })
+  it('reutiliza el acceso ya calculado por la página (no vuelve a leer suscripción)', async () => {
+    db.subscriptions = { data: null, error: { code: 'XX000' } } // si lo leyera, saldría «degraded»
+    const access: any = { phase: 'payment_failed', daysToEnd: 2, graceEndsOn: null, endDate: '2026-11-12', subStatus: 'past_due', noticeDays: 5, subscriptionId: 's1', degraded: false }
+    expect(await syncNotifications('u1', { db: fake, access })).toMatchObject({ ok: true, skipped: false, desired: 1 })
   })
   it('una excepción inesperada tampoco rompe', async () => {
     const boom: any = { from: () => { throw new Error('boom') }, rpc: async () => ok(null) }
-    expect(await syncNotifications('u1', boom)).toEqual({ ok: false, reason: 'unexpected' })
+    expect(await syncNotifications('u1', { db: boom })).toEqual({ ok: false, reason: 'unexpected' })
   })
 })

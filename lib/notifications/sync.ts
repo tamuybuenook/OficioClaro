@@ -3,7 +3,7 @@
 // (así un error técnico nunca resuelve avisos que siguen vigentes).
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { computeAccess } from '@/lib/services/access'
+import { computeAccess, type MyAccess } from '@/lib/services/access'
 import { todayAR } from '@/lib/subscription-access'
 import { desiredNotifications, inSync } from './rules'
 
@@ -16,11 +16,12 @@ const fail = (reason: Extract<SyncOutcome, { ok: false }>['reason'], detail?: un
   return { ok: false, reason }
 }
 
-export async function syncNotifications(userId: string, db?: SupabaseClient, now: Date = new Date()): Promise<SyncOutcome> {
+/** `access`: si la página ya calculó el acceso del usuario, se reutiliza (ahorra 4 consultas). */
+export async function syncNotifications(userId: string, opts: { db?: SupabaseClient; now?: Date; access?: MyAccess } = {}): Promise<SyncOutcome> {
   try {
-    const client = db ?? createAdminClient()
-    const today = todayAR(now)
-    const access = await computeAccess(client, userId)
+    const client = opts.db ?? createAdminClient()
+    const today = todayAR(opts.now ?? new Date())
+    const access = opts.access ?? (await computeAccess(client, userId))
     if (access.degraded) return fail('degraded')
 
     let lastPayment: { id: string; date: string } | null = null

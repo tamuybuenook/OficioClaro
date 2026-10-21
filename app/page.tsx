@@ -7,6 +7,8 @@ import { getMpConfig } from '@/lib/mercadopago/config'
 import { displayState } from '@/lib/subscription-access'
 import { getMyEnabledTradeIds } from '@/lib/services/userTrades'
 import { getMyAccess } from '@/lib/services/access'
+import { syncNotifications } from '@/lib/notifications/sync'
+import { buildBanner, type NotificationRow } from '@/lib/notifications/banner'
 import { getMasterUtCurrent } from '@/lib/services/masterUt'
 import { AppShell, type Job } from '@/components/app-shell'
 import { LandingPage } from '@/components/landing/landing-page'
@@ -42,7 +44,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ v
   let mpAvailable = false
   try { getMpConfig(); mpAvailable = true } catch { /* sin configurar: la UI ofrece solo transferencia */ }
 
-  const [list, customers, subscription, enabledTradeIds, tradeLimit, masterUtValue, plans, payments] = await Promise.all([
+  const [list, customers, subscription, enabledTradeIds, tradeLimit, masterUtValue, plans, payments, notifSync] = await Promise.all([
     locked ? Promise.resolve([]) : getMyList(),
     locked ? Promise.resolve([]) : getMyCustomers().catch(() => []),
     getMySubscription().catch(() => null),
@@ -51,7 +53,17 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ v
     getMasterUtCurrent(),
     getActivePlans().catch(() => []),
     getMyPayments().catch(() => []),
+    // Avisos: se sincronizan con la situación real (reutiliza el acceso ya calculado). Nunca lanza.
+    syncNotifications(user.id, { access }),
   ])
+
+  // Avisos abiertos del usuario (RLS: solo los suyos). Si no se pudo sincronizar o leer, el banner usa el aviso por fase.
+  let openNotifications: NotificationRow[] | null = null
+  if (notifSync.ok && !locked) {
+    const { data: nrows, error: nerr } = await supabase.from('notifications').select('id, kind, severity, due_date, payload').eq('user_id', user.id).eq('status', 'open')
+    openNotifications = nerr ? null : ((nrows ?? []) as NotificationRow[])
+  }
+  const accessView = { phase: access.phase, locked, daysToEnd: access.daysToEnd, graceEndsOn: access.graceEndsOn, endDate: subscription?.end_date ?? null, subStatus: access.subStatus }
 
   const jobs: Job[] = list.map(({ service, pricing }) => ({
     id: service.id,
@@ -115,7 +127,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ v
             }
           : null
       }
-      access={{ phase: access.phase, locked, daysToEnd: access.daysToEnd, graceEndsOn: access.graceEndsOn, endDate: subscription?.end_date ?? null, subStatus: access.subStatus }}
+      access={accessView}
+      banner={buildBanner(accessView, openNotifications)}
       billing={{
         mpAvailable,
         plans: plans.map((p: any) => ({ id: p.id, name: p.name, price: Number(p.price), billingPeriod: p.billing_period, maxTrades: p.max_trades ?? null })),

@@ -16,7 +16,9 @@ import { SubscriptionView, type BillingInfo, type SubscriptionInfo } from '@/com
 import { Profile } from '@/components/features/profile/profile-view'
 import { Proximamente } from '@/components/ui/proximamente'
 import { AccessBanner } from '@/components/features/subscription/access-banner'
-import { accessNotice, type AccessView } from '@/lib/subscription-notice'
+import type { AccessView } from '@/lib/subscription-notice'
+import type { Banner } from '@/lib/notifications/banner'
+import { dismissNotification } from '@/lib/actions/notifications'
 import { AgendaView } from '@/components/features/agenda/agenda-view'
 import { UpcomingJobs } from '@/components/features/agenda/upcoming-jobs'
 export type { Job, View }
@@ -77,6 +79,8 @@ export type AppShellProps = {
   customers: { id: string; name: string; phone: string | null; email: string | null; address: string | null }[]
   subscription: SubscriptionInfo
   access: AccessView
+  /** Aviso a mostrar arriba (calculado en el servidor: bloqueo, avisos de la tabla o aviso por fase). */
+  banner: Banner | null
   billing: BillingInfo
   initialView?: View
   trades: { all: { id: string; name: string; slug: string }[]; enabledIds: string[]; limit: number | null }
@@ -240,7 +244,8 @@ function MyList({ setView, setSelected, enabledTrades, unitValue }: { setView: (
   </div>
 }
 
-export function AppShell({ jobs, profile, paymentDetails, customers, subscription, access, billing, initialView, trades, isAdminUser }: AppShellProps) {
+export function AppShell({ jobs, profile, paymentDetails, customers, subscription, access, banner, billing, initialView, trades, isAdminUser }: AppShellProps) {
+  const [dismissedId, setDismissedId] = useState<string | null>(null)
   const [view, setView] = useState<View>(initialView ?? 'home')
   const [selected, setSelected] = useState<Job | null>(jobs[0] ?? null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -277,7 +282,8 @@ export function AppShell({ jobs, profile, paymentDetails, customers, subscriptio
     return <Proximamente title="Presupuestos" />
   }
 
-  const notice = accessNotice(access)
+  const notice = banner && banner.id !== dismissedId ? banner : null
+  const dismiss = notice?.dismissible && notice.id ? () => { setDismissedId(notice.id); void dismissNotification(notice.id!) } : undefined
 
   // Suscripción vencida (fuera de gracia) o prueba terminada: puede entrar, pero solo ve Suscripción/pago.
   if (access.locked) {
@@ -294,5 +300,5 @@ export function AppShell({ jobs, profile, paymentDetails, customers, subscriptio
     )
   }
 
-  return <div className="min-h-screen bg-[var(--oc-page)] text-[var(--oc-ink)]"><div className="flex min-h-screen"><Sidebar view={view} setView={setView} isAdminUser={isAdminUser} /><div className="min-w-0 flex-1"><AppHeader onMenu={() => setMenuOpen(true)} name={profile.fullName} />{notice && <AccessBanner notice={notice} actionLabel={view !== 'subscription' ? 'Ver suscripción' : undefined} onAction={() => setView('subscription')} />}{render()}</div></div><BottomNav view={view} setView={setView} />{menuOpen && <div className="fixed inset-0 z-40 bg-[var(--oc-brand)]/20 md:hidden" onClick={() => setMenuOpen(false)}><div className="h-full w-[280px] bg-[var(--oc-surface-muted)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}><div className="flex items-center justify-between"><Logo /><button onClick={() => setMenuOpen(false)} aria-label="Cerrar menú"><X className="size-5 text-[var(--oc-muted)]" /></button></div><div className="mt-8 flex flex-col gap-1">{[...navItems, { id: 'profile' as View, label: 'Mi perfil', icon: Settings }, { id: 'clients' as View, label: 'Mis clientes', icon: Users }, { id: 'agenda' as View, label: 'Agenda', icon: CalendarDays }, { id: 'budgets' as View, label: 'Presupuestos', icon: FileText }, { id: 'subscription' as View, label: 'Suscripción', icon: ShieldCheck }].map(({ id, label, icon: Icon }) => <button key={id} onClick={() => { setView(id); setMenuOpen(false) }} className="flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-[var(--oc-muted)] hover:bg-[var(--oc-surface-soft)]"><Icon className="size-[18px]" />{label}</button>)}{isAdminUser && <a href="/admin" className="flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-[var(--oc-muted)] hover:bg-[var(--oc-surface-soft)]"><ShieldCheck className="size-[18px]" />Panel admin</a>}<form action={signOut}><button type="submit" className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-[var(--oc-coral)] hover:bg-[var(--oc-surface-soft)]"><X className="size-[18px]" />Cerrar sesión</button></form></div></div></div>}</div>
+  return <div className="min-h-screen bg-[var(--oc-page)] text-[var(--oc-ink)]"><div className="flex min-h-screen"><Sidebar view={view} setView={setView} isAdminUser={isAdminUser} /><div className="min-w-0 flex-1"><AppHeader onMenu={() => setMenuOpen(true)} name={profile.fullName} />{notice && <AccessBanner notice={notice} actionLabel={view !== 'subscription' && !notice.dismissible ? 'Ver suscripción' : undefined} onAction={() => setView('subscription')} onDismiss={dismiss} />}{render()}</div></div><BottomNav view={view} setView={setView} />{menuOpen && <div className="fixed inset-0 z-40 bg-[var(--oc-brand)]/20 md:hidden" onClick={() => setMenuOpen(false)}><div className="h-full w-[280px] bg-[var(--oc-surface-muted)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}><div className="flex items-center justify-between"><Logo /><button onClick={() => setMenuOpen(false)} aria-label="Cerrar menú"><X className="size-5 text-[var(--oc-muted)]" /></button></div><div className="mt-8 flex flex-col gap-1">{[...navItems, { id: 'profile' as View, label: 'Mi perfil', icon: Settings }, { id: 'clients' as View, label: 'Mis clientes', icon: Users }, { id: 'agenda' as View, label: 'Agenda', icon: CalendarDays }, { id: 'budgets' as View, label: 'Presupuestos', icon: FileText }, { id: 'subscription' as View, label: 'Suscripción', icon: ShieldCheck }].map(({ id, label, icon: Icon }) => <button key={id} onClick={() => { setView(id); setMenuOpen(false) }} className="flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-[var(--oc-muted)] hover:bg-[var(--oc-surface-soft)]"><Icon className="size-[18px]" />{label}</button>)}{isAdminUser && <a href="/admin" className="flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-[var(--oc-muted)] hover:bg-[var(--oc-surface-soft)]"><ShieldCheck className="size-[18px]" />Panel admin</a>}<form action={signOut}><button type="submit" className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-[var(--oc-coral)] hover:bg-[var(--oc-surface-soft)]"><X className="size-[18px]" />Cerrar sesión</button></form></div></div></div>}</div>
 }
