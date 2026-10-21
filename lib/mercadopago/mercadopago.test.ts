@@ -228,6 +228,28 @@ describe('registro seguro de fallos de MP', () => {
   })
 })
 
+describe('checkout: back_urls con APP_URL sucia en Vercel', () => {
+  const ORIGIN = 'https://oficioclaro.vercel.app'
+  const mk = (APP_URL: string) => getMpConfig({ MP_ACCESS_TOKEN: 't', MP_WEBHOOK_SECRET: 's', MP_ENV: 'test', VERCEL_ENV: 'production', MP_ALLOW_TEST_IN_PRODUCTION: 'true', APP_URL } as any)
+  it.each([ORIGIN, `${ORIGIN}/`, `${ORIGIN} `, `${ORIGIN}\n`, `"${ORIGIN}"`, `${ORIGIN}/app/`])('APP_URL %j → el checkout envía a MP las tres back_urls exactas y válidas', async (raw) => {
+    const { store } = fakeStore()
+    const { mp, log } = fakeMp({ 'POST /checkout/preferences': { init_point: 'https://mp/pay' } })
+    await startCheckout({ store, mp, appUrl: mk(raw).appUrl }, { userId: 'u1', email: null, planId: PRO.id, mode: 'one_time' })
+    const body = log[0].body
+    expect(body.back_urls).toEqual({
+      success: `${ORIGIN}/?vista=suscripcion&mp=ok`,
+      pending: `${ORIGIN}/?vista=suscripcion&mp=pending`,
+      failure: `${ORIGIN}/?vista=suscripcion&mp=error`,
+    })
+    for (const u of Object.values(body.back_urls) as string[]) {
+      const p = new URL(u)
+      expect(p.protocol).toBe('https:'); expect(p.origin).toBe(ORIGIN); expect(p.pathname).toBe('/'); expect(u).not.toMatch(/\s|"/)
+    }
+    expect(body.auto_return).toBe('approved')
+    expect(body.notification_url).toBe(`${ORIGIN}/api/mercadopago/webhook`)
+  })
+})
+
 describe('checkout', () => {
   const deps = (store: MpStore, mp: MpClient) => ({ store, mp, appUrl: 'https://app.test' })
   const U = { userId: 'u1', email: 'a@b.com' }

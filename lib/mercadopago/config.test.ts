@@ -79,3 +79,86 @@ describe('los mensajes de error no revelan secretos', () => {
     }
   })
 })
+
+describe('APP_URL: normalización al origen', () => {
+  const ORIGIN = 'https://oficioclaro.vercel.app'
+  it.each([
+    ['limpia', ORIGIN],
+    ['barra final', `${ORIGIN}/`],
+    ['varias barras finales', `${ORIGIN}///`],
+    ['espacio final', `${ORIGIN} `],
+    ['espacios alrededor', `  ${ORIGIN}  `],
+    ['salto de línea final', `${ORIGIN}\n`],
+    ['CRLF final', `${ORIGIN}\r\n`],
+    ['comillas dobles', `"${ORIGIN}"`],
+    ['comillas simples', `'${ORIGIN}'`],
+    ['comillas con espacios dentro', `" ${ORIGIN} "`],
+    ['barra y espacio', `${ORIGIN}/ `],
+    ['ruta adicional', `${ORIGIN}/app/`],
+    ['query y hash', `${ORIGIN}/?a=1#x`],
+  ])('%s → origen limpio', (_n, v) => {
+    expect(getMpConfig(env({ APP_URL: v })).appUrl).toBe(ORIGIN)
+    expect(getMpConfig(env({ APP_URL: v, VERCEL_ENV: 'production', MP_ALLOW_TEST_IN_PRODUCTION: 'true' })).appUrl).toBe(ORIGIN)
+  })
+  it.each([['sin protocolo', 'oficioclaro.vercel.app'], ['espacio en medio', 'https://oficio claro.vercel.app'], ['solo comillas con texto roto', '"https://"'], ['protocolo no http', 'ftp://oficioclaro.vercel.app'], ['javascript', 'javascript:alert(1)']])(
+    'valor inválido (%s) → MpConfigError', (_n, v) => {
+      expect(() => getMpConfig(env({ APP_URL: v }))).toThrow(MpConfigError)
+    })
+  it('vacío o solo espacios/comillas: sigue siendo "faltan variables"', () => {
+    for (const v of ['', '   ', '""', undefined]) expect(() => getMpConfig(env({ APP_URL: v as any }))).toThrow(/faltan variables/)
+  })
+  it('http sigue rechazado en producción (MP_ENV=production o deployment Production), aunque venga sucio', () => {
+    expect(() => getMpConfig(env({ APP_URL: ' "http://oficioclaro.vercel.app/" ', MP_ENV: 'production', VERCEL_ENV: 'production' }))).toThrow(/https/)
+    expect(() => getMpConfig(env({ APP_URL: 'http://oficioclaro.vercel.app', VERCEL_ENV: 'production', MP_ALLOW_TEST_IN_PRODUCTION: 'true' }))).toThrow(/https/)
+  })
+  it('en preview/desarrollo http sigue permitido con MP_ENV=test', () => {
+    expect(getMpConfig(env({ APP_URL: 'http://localhost:3000/', VERCEL_ENV: 'preview' })).appUrl).toBe('http://localhost:3000')
+  })
+  it('no altera las reglas de MP_ENV ni de MP_ALLOW_TEST_IN_PRODUCTION', () => {
+    expect(() => getMpConfig(env({ VERCEL_ENV: 'production' }))).toThrow(/Producción requiere/)
+    expect(() => getMpConfig(env({ MP_ENV: 'otro' }))).toThrow(/MP_ENV/)
+    expect(getMpConfig(PROD_TEST_OK).env).toBe('test')
+  })
+})
+
+describe('APP_URL: rechazo de formatos peligrosos o inválidos', () => {
+  it.each([
+    ['usuario y clave', 'https://user:pass@oficioclaro.vercel.app'],
+    ['solo usuario', 'https://user@oficioclaro.vercel.app'],
+    ['solo clave', 'https://:pass@oficioclaro.vercel.app'],
+    ['arroba vacía', 'https://@oficioclaro.vercel.app'],
+    ['credenciales con comillas y espacios', ' "https://user:pass@oficioclaro.vercel.app/" '],
+    ['host vacío', 'https://'],
+    ['host vacío con barra', 'https:///'],
+    ['host vacío con ruta', 'http:///x'],
+    ['host solo punto', 'https://.'],
+    ['etiquetas vacías', 'https://oficioclaro..vercel.app'],
+    ['punto inicial', 'https://.oficioclaro.vercel.app'],
+    ['guion bajo en el host', 'https://exa_mple.com'],
+    ['solo puerto', 'https://:443'],
+    ['puerto fuera de rango', 'https://oficioclaro.vercel.app:99999'],
+    ['ftp', 'ftp://oficioclaro.vercel.app'],
+    ['file', 'file:///etc/passwd'],
+    ['javascript', 'javascript:alert(1)'],
+    ['data', 'data:text/html,hola'],
+  ])('%s → MpConfigError', (_n, v) => {
+    expect(() => getMpConfig(env({ APP_URL: v }))).toThrow(MpConfigError)
+    expect(() => getMpConfig(env({ APP_URL: v, VERCEL_ENV: 'production', MP_ALLOW_TEST_IN_PRODUCTION: 'true' }))).toThrow(MpConfigError)
+  })
+  it('el error no revela la clave incrustada ni los secretos', () => {
+    try { getMpConfig(env({ APP_URL: 'https://user:claveSecreta@oficioclaro.vercel.app' })); throw new Error('no lanzó') }
+    catch (e) { const m = String((e as Error).message); expect(m).not.toContain('claveSecreta'); expect(m).not.toContain(TOKEN); expect(m).not.toContain(WHSEC) }
+  })
+  it('hosts legítimos siguen aceptados: mayúsculas, puerto, localhost, IPv4 e IPv6', () => {
+    expect(getMpConfig(env({ APP_URL: 'HTTPS://OficioClaro.Vercel.App' })).appUrl).toBe('https://oficioclaro.vercel.app')
+    expect(getMpConfig(env({ APP_URL: 'https://oficioclaro.vercel.app:8443/' })).appUrl).toBe('https://oficioclaro.vercel.app:8443')
+    expect(getMpConfig(env({ APP_URL: 'http://localhost:3000', VERCEL_ENV: 'development' })).appUrl).toBe('http://localhost:3000')
+    expect(getMpConfig(env({ APP_URL: 'http://127.0.0.1:3000', VERCEL_ENV: 'preview' })).appUrl).toBe('http://127.0.0.1:3000')
+    expect(getMpConfig(env({ APP_URL: 'http://[::1]:3000', VERCEL_ENV: 'preview' })).appUrl).toBe('http://[::1]:3000')
+  })
+  it('Production sigue exigiendo HTTPS (con MP_ENV=production y con prueba autorizada)', () => {
+    expect(() => getMpConfig(env({ APP_URL: 'http://oficioclaro.vercel.app', MP_ENV: 'production', VERCEL_ENV: 'production' }))).toThrow(/https/)
+    expect(() => getMpConfig(env({ APP_URL: 'http://oficioclaro.vercel.app', VERCEL_ENV: 'production', MP_ALLOW_TEST_IN_PRODUCTION: 'true' }))).toThrow(/https/)
+    expect(getMpConfig(env({ APP_URL: 'https://oficioclaro.vercel.app', MP_ENV: 'production', VERCEL_ENV: 'production' })).appUrl).toBe('https://oficioclaro.vercel.app')
+  })
+})
