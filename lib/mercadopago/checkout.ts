@@ -3,6 +3,7 @@ import { periodMonths } from '@/lib/plan-period'
 import { MpApiError, type MpClient } from './client'
 import { RenewalsBlockedError, type MpStore, type PlanRow, type SubRow } from './store'
 import { cancelPreapproval, resolveCreating } from './preapprovals'
+import { logMpFailure } from './log'
 
 export type CheckoutMode = 'one_time' | 'recurring'
 export class CheckoutError extends Error {}
@@ -71,6 +72,7 @@ async function startOneTime(d: Deps, i: Input, plan: PlanRow, sub: SubRow): Prom
     // Solo un rechazo DEFINITIVO de MP (4xx, salvo 408/429) prueba que no se creó nada. Timeout, red, 5xx o respuesta rara =>
     // resultado INCIERTO: la intención sigue PENDIENTE (la conciliación la resuelve; la eliminación del usuario queda bloqueada).
     const definitive = !created && e instanceof MpApiError && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429
+    logMpFailure('one_time_failed', e, { mode: 'one_time', outcome: definitive ? 'definitive' : 'uncertain', mpCreated: created, intent: intent.id })
     if (definitive) {
       await d.store.failIntent(intent.id)
       throw new CheckoutError('No pudimos iniciar el pago con Mercado Pago. Probá de nuevo en unos minutos.')
@@ -133,7 +135,8 @@ async function startRecurring(d: Deps, i: Input, plan: PlanRow, sub: SubRow): Pr
       notification_url: `${d.appUrl}/api/mercadopago/webhook`,
       status: 'pending',
     }, row.id)
-  } catch {
+  } catch (e) {
+    logMpFailure('recurring_create_failed', e, { mode: 'recurring', preapproval: row.id })
     // Resultado incierto (timeout/5xx): ¿MP la creó? Se busca por external_reference antes de dar el intento por fallido.
     const created = await d.store.getPreapprovalById(row.id)
     const outcome = created ? await resolveCreating(deps, created).catch(() => 'in_progress' as const) : 'in_progress' // si no aparece, queda 'creating' y se recupera luego (no se da por fallida con MP posiblemente en vuelo)

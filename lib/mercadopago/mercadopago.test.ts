@@ -168,6 +168,66 @@ describe('webhook: procesamiento', () => {
   })
 })
 
+describe('registro seguro de fallos de MP', () => {
+  const cfg = { accessToken: 'APP_USR-123456789-secreto', webhookSecret: 's', env: 'test' as const, appUrl: 'https://x.com' }
+  it('el cliente conserva solo el motivo permitido y saneado (sin token, email ni números largos)', async () => {
+    const body = JSON.stringify({ error: 'bad_request', message: 'invalid payer.email juan@mail.com token APP_USR-999999-abc', cause: [{ code: 2000, description: 'back_url invalida' }], secret: 'NO-DEBE-SALIR' })
+    const c = createMpClient(cfg, vi.fn().mockResolvedValue(new Response(body, { status: 400 })) as any)
+    const err = await c.request('POST', '/checkout/preferences', {}).catch((e) => e)
+    expect(err.status).toBe(400)
+    expect(err.detail).toContain('error=bad_request')
+    expect(err.detail).toContain('back_url invalida')
+    for (const bad of ['juan@mail.com', 'APP_USR', 'NO-DEBE-SALIR']) expect(err.detail).not.toContain(bad)
+  })
+  it('cuerpo no JSON o ilegible: sin detalle y sin romper', async () => {
+    const c = createMpClient(cfg, vi.fn().mockResolvedValue(new Response('<html>boom</html>', { status: 500 })) as any)
+    const err = await c.request('GET', '/x').catch((e) => e)
+    expect(err).toBeInstanceOf(MpApiError); expect(err.status).toBe(500); expect(err.detail).toBeUndefined()
+  })
+  const deps = (store: MpStore, mp: MpClient) => ({ store, mp, appUrl: 'https://app.test' })
+  const U = { userId: 'u1', email: 'cliente@privado.com' }
+  const logged = (spy: any) => spy.mock.calls.map((c: any[]) => c.join(' ')).join('\n')
+  it('rechazo definitivo 4xx: registra tipo, estado HTTP y motivo saneado; el usuario ve el mensaje de siempre', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { store, calls } = fakeStore()
+    const { mp } = fakeMp({ 'POST /checkout/preferences': new MpApiError(401, 'Mercado Pago respondió 401 (POST /checkout/preferences)', 'message=invalid access token') })
+    await expect(startCheckout(deps(store, mp), { ...U, planId: PRO.id, mode: 'one_time' })).rejects.toThrow('No pudimos iniciar el pago con Mercado Pago. Probá de nuevo en unos minutos.')
+    const out = logged(spy)
+    expect(out).toContain('[mp] one_time_failed'); expect(out).toContain('"status":401'); expect(out).toContain('"outcome":"definitive"'); expect(out).toContain('invalid access token')
+    expect(out).not.toContain('cliente@privado.com')
+    expect(calls.failIntent[0]).toBe(INTENT)
+    spy.mockRestore()
+  })
+  it('resultado incierto: se registra como incierto y la intención NO se marca fallida', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { store, calls } = fakeStore()
+    const { mp } = fakeMp({ 'POST /checkout/preferences': new MpApiError(0, 'No se pudo contactar a Mercado Pago (POST /checkout/preferences)') })
+    await expect(startCheckout(deps(store, mp), { ...U, planId: PRO.id, mode: 'one_time' })).rejects.toThrow(/No pudimos confirmar/)
+    expect(logged(spy)).toContain('"outcome":"uncertain"')
+    expect(calls.failIntent).toBeUndefined(); expect(calls.markIntentUncertain).toEqual([INTENT])
+    spy.mockRestore()
+  })
+  it('un MpApiError construido fuera de MpClient con detail sensible: el log lo sanea igual', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { store } = fakeStore()
+    const { mp } = fakeMp({ 'POST /checkout/preferences': new MpApiError(400, 'rechazo', 'payer cliente@privado.com token APP_USR-123456789-secreto Bearer abc.def') })
+    await expect(startCheckout(deps(store, mp), { ...U, planId: PRO.id, mode: 'one_time' })).rejects.toBeInstanceOf(CheckoutError)
+    const out = logged(spy)
+    expect(out).toContain('"status":400'); expect(out).toContain('[email]'); expect(out).toContain('[token]')
+    for (const bad of ['cliente@privado.com', 'APP_USR', 'secreto', 'abc.def']) expect(out).not.toContain(bad)
+    spy.mockRestore()
+  })
+  it('error no-MP (p. ej. base de datos): se registra saneado sin emails ni tokens', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { store } = fakeStore({ setIntentCheckout: async () => { throw new Error('fallo para cliente@privado.com con Bearer abc.def') } })
+    const { mp } = fakeMp({ 'POST /checkout/preferences': { init_point: 'https://mp/pay' } })
+    await expect(startCheckout(deps(store, mp), { ...U, planId: PRO.id, mode: 'one_time' })).rejects.toBeInstanceOf(CheckoutError)
+    const out = logged(spy)
+    expect(out).toContain('"kind":"error"'); expect(out).toContain('[email]'); expect(out).not.toContain('cliente@privado.com'); expect(out).not.toContain('abc.def')
+    spy.mockRestore()
+  })
+})
+
 describe('checkout', () => {
   const deps = (store: MpStore, mp: MpClient) => ({ store, mp, appUrl: 'https://app.test' })
   const U = { userId: 'u1', email: 'a@b.com' }
