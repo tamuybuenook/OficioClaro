@@ -64,7 +64,7 @@ export function computeMpSettings(env: NodeJS.ProcessEnv = process.env): MpSetti
   if (!value) issues.push('APP_URL no está definida.')
   else {
     let url: URL | null = null
-    if (/[\s\u0000-\u001f\u007f\u00a0"']/.test(value)) issues.push('APP_URL no es una URL válida: contiene espacios, saltos de línea, comillas o texto extra (¿se pegó "Copiar"?). Escribila a mano.')
+    if (/[\s\u0000-\u001f\u007f\u00a0"']/.test(value)) issues.push('APP_URL no es una URL válida: tiene espacios, saltos de línea, comillas o texto adicional. Borrá el valor en Vercel y escribilo de nuevo (solo https://tu-dominio).')
     else try { url = new URL(value) } catch { issues.push('APP_URL no es una URL válida.') }
     if (url) {
       if (url.protocol !== 'https:') issues.push(mpEnv === 'production' ? 'En producción APP_URL debe ser https.' : 'Mercado Pago requiere https para el retorno automático (auto_return).')

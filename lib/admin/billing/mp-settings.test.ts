@@ -44,10 +44,14 @@ describe('computeMpSettings', () => {
     expect(computeMpSettings(full({ APP_URL: 'https://x.com/' })).appUrl.issues.join(' ')).toMatch(/barra/)
     expect(computeMpSettings(full({ APP_URL: 'https://x.com/app' })).appUrl.issues.join(' ')).toMatch(/origen/)
     expect(computeMpSettings(full({ MP_ENV: 'production', VERCEL_ENV: 'production', APP_URL: 'https://localhost' })).appUrl.issues.join(' ')).toMatch(/localhost/)
+    const ok = computeMpSettings(full({ APP_URL: 'https://oficioclaro.vercel.app' }))
+    expect(ok.appUrl.issues).toEqual([]); expect(ok.appUrl.value).toBe('https://oficioclaro.vercel.app')
+    expect(ok.webhookUrl).toBe('https://oficioclaro.vercel.app/api/mercadopago/webhook')
+    expect(ok.reconcileUrl).toBe('https://oficioclaro.vercel.app/api/mercadopago/reconcile')
     const s = computeMpSettings(full({ APP_URL: 'no es url' })); expect(s.webhookUrl).toBeNull()
     for (const v of ['https://oficioclaro.vercel.app\nCopiar', 'https://oficioclaro.vercel.app\tCopiar', 'https://oficioclaro.vercel.app Copiar']) {
       const d = computeMpSettings(full({ APP_URL: v }))
-      expect(d.webhookUrl).toBeNull(); expect(d.reconcileUrl).toBeNull(); expect(d.appUrl.issues.join(' ')).toMatch(/Copiar|saltos de línea/)
+      expect(d.webhookUrl).toBeNull(); expect(d.reconcileUrl).toBeNull(); expect(d.appUrl.issues.join(' ')).toMatch(/saltos de línea/); expect(d.appUrl.issues.join(' ')).not.toMatch(/Copiar/)
     }
   })
 })
