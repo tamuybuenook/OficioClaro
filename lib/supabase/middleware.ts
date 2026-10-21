@@ -1,7 +1,11 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { isPublicPath } from '@/lib/auth/paths'
 
 export async function updateSession(request: NextRequest) {
+  // El webhook (firma HMAC) y la conciliación por cron (CRON_SECRET) no tienen sesión: se autentican en su propia ruta.
+  if (request.nextUrl.pathname === '/api/mercadopago/webhook' || request.nextUrl.pathname === '/api/mercadopago/reconcile') return NextResponse.next({ request })
+
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -25,10 +29,9 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const isAuthRoute = request.nextUrl.pathname.startsWith('/login') || request.nextUrl.pathname.startsWith('/register')
   const isAdminRoute = request.nextUrl.pathname.startsWith('/admin')
 
-  if (!user && !isAuthRoute && request.nextUrl.pathname !== '/') {
+  if (!user && !isPublicPath(request.nextUrl.pathname)) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)

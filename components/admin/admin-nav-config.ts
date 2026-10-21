@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, BookOpen, Banknote, Layers, CircleDollarSign, Settings } from 'lucide-react'
+import { LayoutDashboard, Users, BookOpen, Banknote, Layers, CircleDollarSign, Settings, Receipt } from 'lucide-react'
 
 export const adminNavItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
@@ -6,6 +6,7 @@ export const adminNavItems = [
   { href: '/admin/catalogo', label: 'Listas maestras', icon: BookOpen },
   { href: '/admin/planes', label: 'Planes', icon: Banknote },
   { href: '/admin/suscripciones', label: 'Suscripciones', icon: Layers },
+  { href: '/admin/facturacion', label: 'Facturación', icon: Receipt },
   { href: '/admin/ipc', label: 'IPC y actualizaciones', icon: CircleDollarSign },
   { href: '/admin/configuracion', label: 'Configuración', icon: Settings },
 ]

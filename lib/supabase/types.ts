@@ -1,6 +1,8 @@
 // Tipado manual mínimo del esquema (0001_schema.sql).
 // Reemplazar por `supabase gen types typescript` apenas exista el proyecto real.
 
+import type { PlanPeriod } from '@/lib/plan-period'
+
 export type ProfileRole = 'user' | 'admin'
 export type VersionStatus = 'draft' | 'published'
 export type SubscriptionStatus = 'trial' | 'active' | 'past_due' | 'suspended' | 'cancelled'
@@ -148,7 +150,7 @@ export interface Database {
           id: string
           name: string
           price: number
-          billing_period: 'monthly' | 'yearly'
+          billing_period: PlanPeriod
           is_active: boolean
           created_at: string
         }

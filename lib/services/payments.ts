@@ -4,7 +4,7 @@ export async function getMyPayments() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('payments')
-    .select('*, subscriptions(plan_id, plans(name))')
+    .select('*, plan:plans!plan_id(name), subscriptions(plan_id, plans(name))')
     .order('created_at', { ascending: false })
   if (error) throw error
   return data

@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 function GoogleIcon() {
@@ -14,22 +15,29 @@ function GoogleIcon() {
 }
 
 export function GoogleButton() {
+  const [loading, setLoading] = useState(false)
+
   async function signInWithGoogle() {
+    if (loading) return
+    setLoading(true)
     const supabase = createClient()
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/auth/callback` },
     })
+    // Si el navegador no redirige (error o cancelación), se vuelve a habilitar el botón.
+    setTimeout(() => setLoading(false), 4000)
   }
 
   return (
     <button
       type="button"
       onClick={signInWithGoogle}
-      className="flex w-full items-center justify-center gap-3 rounded-xl border-2 border-[var(--oc-border)] bg-white p-3.5 text-sm font-bold text-[#1f1f1f] shadow-sm transition hover:border-[#c2c9cc] hover:shadow-md active:scale-[0.99]"
+      disabled={loading}
+      className="flex min-h-[52px] w-full items-center justify-center gap-3 rounded-[14px] border-2 border-[var(--oc-border)] bg-white p-3.5 text-base font-bold text-[#1f1f1f] shadow-sm transition hover:border-[var(--oc-muted)] hover:shadow-md disabled:opacity-70"
     >
       <GoogleIcon />
-      Continuar con Google
+      {loading ? 'Conectando con Google…' : 'Continuar con Google'}
     </button>
   )
 }

@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getClientDetail } from '@/lib/services/clientDetail'
 import { revalidatePath } from 'next/cache'
+import { requireFullAccess } from '@/lib/services/access'
 
 export async function fetchClientDetail(customerId: string) {
   return getClientDetail(customerId)
@@ -16,6 +17,8 @@ async function logActivity(customerId: string, type: string, description?: strin
 }
 
 export async function addClientJob(customerId: string, formData: FormData) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
@@ -35,6 +38,8 @@ export async function addClientJob(customerId: string, formData: FormData) {
 }
 
 export async function addClientNote(customerId: string, note: string) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
@@ -44,6 +49,8 @@ export async function addClientNote(customerId: string, note: string) {
 }
 
 export async function setClientRating(customerId: string, rating: number, ratingNote: string | null) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { error } = await supabase.from('customers').update({ rating, rating_note: ratingNote }).eq('id', customerId)
   if (error) return { error: error.message }

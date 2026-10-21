@@ -63,7 +63,7 @@ export function Profile({ setView, profile, paymentDetails, subscription }: { se
       <h1 className="mt-1 text-2xl font-bold text-[var(--oc-ink)]">Mi perfil</h1>
 
       <div className="mt-7 flex items-center gap-4">
-        <div className="flex size-16 items-center justify-center rounded-full bg-[#f1d9c9] text-xl font-bold text-[#744838]">{initials}</div>
+        <div className="flex size-16 items-center justify-center rounded-full bg-[var(--oc-warm-chip)] text-xl font-bold text-[var(--oc-warm-text)]">{initials}</div>
         <div>
           <h2 className="font-bold text-[var(--oc-ink)]">{profile.fullName}</h2>
           <p className="text-sm text-[var(--oc-muted)]">{profile.email}</p>

@@ -3,6 +3,8 @@
 import { useEffect, useState, useTransition } from 'react'
 import { fetchClientDetail, addClientJob, addClientNote, setClientRating } from '@/lib/actions/clientDetail'
 import { ArrowLeft, Star } from 'lucide-react'
+import { StatusBadge } from '@/components/features/agenda/status-badge'
+import { formatDayShort, formatTimeRange, isJobStatus } from '@/lib/agenda'
 
 type Tab = 'datos' | 'trabajos' | 'presupuestos' | 'actividad' | 'notas' | 'valoracion'
 const TABS: { id: Tab; label: string }[] = [
@@ -20,10 +22,14 @@ const activityLabel: Record<string, string> = {
   presupuesto_enviado: 'Presupuesto enviado',
   presupuesto_aceptado: 'Presupuesto aceptado',
   presupuesto_rechazado: 'Presupuesto rechazado',
+  trabajo_programado: 'Trabajo programado',
+  trabajo_reprogramado: 'Trabajo reprogramado',
+  trabajo_estado: 'Cambio de estado del trabajo',
+  trabajo_cancelado: 'Trabajo cancelado',
 }
 const statusLabel: Record<string, string> = { draft: 'Borrador', sent: 'Enviado', accepted: 'Aceptado', rejected: 'Rechazado' }
 
-export function ClientDetail({ customerId, onBack }: { customerId: string; onBack: () => void }) {
+export function ClientDetail({ customerId, onBack, onSchedule, onOpenJob }: { customerId: string; onBack: () => void; onSchedule?: (customerId: string) => void; onOpenJob?: (jobId: string) => void }) {
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchClientDetail>> | null>(null)
   const [tab, setTab] = useState<Tab>('datos')
   const [pending, startTransition] = useTransition()
@@ -60,6 +66,7 @@ export function ClientDetail({ customerId, onBack }: { customerId: string; onBac
       <button onClick={onBack} className="mb-4 flex items-center gap-2 text-sm font-semibold text-[var(--oc-brand)]"><ArrowLeft className="size-4" />Volver a clientes</button>
       <h1 className="text-2xl font-bold text-[var(--oc-ink)]">{c.name}</h1>
       <p className="mt-1 text-sm text-[var(--oc-muted)]">{[c.phone, c.email].filter(Boolean).join(' · ') || 'Sin datos de contacto'}</p>
+      {onSchedule && <button type="button" onClick={() => onSchedule(customerId)} className="mt-3 min-h-11 rounded-xl bg-[var(--oc-coral)] px-4 py-2.5 text-sm font-bold text-white">Programar trabajo</button>}
 
       <div className="mt-5 flex gap-2 overflow-x-auto pb-1">
         {TABS.map((t) => <button key={t.id} onClick={() => setTab(t.id)} className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-bold ${tab === t.id ? 'bg-[var(--oc-brand)] text-white' : 'border border-[var(--oc-border)] text-[var(--oc-muted)]'}`}>{t.label}</button>)}
@@ -77,13 +84,20 @@ export function ClientDetail({ customerId, onBack }: { customerId: string; onBac
 
         {tab === 'trabajos' && (
           <div>
-            <button onClick={addJob} disabled={pending} className="mb-4 rounded-lg bg-[var(--oc-brand)] px-3 py-2 text-xs font-bold text-white disabled:opacity-60">+ Registrar trabajo</button>
+            <div className="mb-4 flex flex-wrap gap-2">
+              {onSchedule && <button type="button" onClick={() => onSchedule(customerId)} className="min-h-11 rounded-lg bg-[var(--oc-coral)] px-3 py-2 text-xs font-bold text-white">Programar trabajo</button>}
+              <button onClick={addJob} disabled={pending} className="min-h-11 rounded-lg bg-[var(--oc-brand)] px-3 py-2 text-xs font-bold text-white disabled:opacity-60">+ Registrar trabajo realizado</button>
+            </div>
             {data.jobs.length === 0 ? <p className="text-sm text-[var(--oc-muted)]">Todavía no hay trabajos registrados.</p> : (
               <div className="flex flex-col divide-y divide-[var(--oc-border-soft)]">
                 {data.jobs.map((j: any) => (
                   <div key={j.id} className="py-3">
-                    <div className="flex items-center justify-between"><p className="font-semibold">{j.description}</p><p className="text-xs text-[var(--oc-muted)]">{j.job_date}</p></div>
+                    <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1"><p className="min-w-0 break-words font-semibold">{j.description}</p><p className="text-xs text-[var(--oc-muted)]">{j.job_date ? `${formatDayShort(j.job_date)}${j.start_time ? ` · ${formatTimeRange(j.start_time, j.duration_minutes)}` : ''}` : 'Sin fecha'}</p></div>
                     <p className="mt-1 text-xs text-[var(--oc-muted)]">{j.trades?.name ?? 'Sin oficio'} {j.price ? `· $${Number(j.price).toLocaleString('es-AR')}` : ''}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {isJobStatus(j.status) && <StatusBadge status={j.status} />}
+                      {onOpenJob && <button type="button" onClick={() => onOpenJob(j.id)} className="min-h-11 px-1 text-xs font-bold text-[var(--oc-brand)] underline">Ver en la agenda</button>}
+                    </div>
                   </div>
                 ))}
               </div>

@@ -3,9 +3,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { applyPercent } from '@/lib/money'
 import { revalidatePath } from 'next/cache'
+import { requireFullAccess } from '@/lib/services/access'
 
 // Guarda/actualiza "mi precio" para un servicio. No toca la lista general ni el IPC (sección 13).
 export async function setMyPrice(serviceId: string, customPrice: number) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
@@ -23,6 +26,8 @@ export async function setMyPrice(serviceId: string, customPrice: number) {
 
 // Vuelve a usar el precio de referencia (deja de estar personalizado).
 export async function resetMyPrice(serviceId: string) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
@@ -36,6 +41,8 @@ export async function resetMyPrice(serviceId: string) {
 
 // Quita la UT propia de la tarea (vuelve a UT general × mi UT); conserva el precio manual si existe.
 export async function resetMyTaskUt(serviceId: string) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
@@ -47,6 +54,8 @@ export async function resetMyTaskUt(serviceId: string) {
 
 // UT propia para una tarea puntual (no toca el precio ni la UT general).
 export async function setMyTaskUt(serviceId: string, utCoefficient: number) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
@@ -97,6 +106,8 @@ export async function previewMyIpcUpdate() {
 // Confirmación: función SQL atómica e idempotente. Calcula en la base (no confía en valores del cliente),
 // actualiza la UT personal (con historial) y los precios manuales del usuario; nunca toca la lista general.
 export async function applyMyIpcUpdate(ipcId: string) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
@@ -110,6 +121,8 @@ export async function applyMyIpcUpdate(ipcId: string) {
 // Cambia el valor de la UT general: recalcula automáticamente todos los trabajos vinculados.
 // Pasa por set_ut_value() para que quede registrado en el histórico (nunca pisa el anterior).
 export async function setMyUnitValue(unitValue: number) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }

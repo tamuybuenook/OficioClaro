@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { isPlanPeriod } from '@/lib/plan-period'
 
 async function logAudit(entity: string, entityId: string | null, action: string, newValue: unknown) {
   const supabase = await createClient()
@@ -14,10 +15,12 @@ async function logAudit(entity: string, entityId: string | null, action: string,
 // Solo admin (RLS lo exige igual)
 export async function updatePlan(planId: string, formData: FormData) {
   const supabase = await createClient()
+  const period = formData.get('billing_period')
+  if (!isPlanPeriod(period)) return { error: 'El período del plan no es válido.' }
   const patch = {
     name: String(formData.get('name')),
     price: Number(formData.get('price')),
-    billing_period: String(formData.get('billing_period')),
+    billing_period: period,
     max_trades: formData.get('max_trades') ? Number(formData.get('max_trades')) : null,
     trial_days: Number(formData.get('trial_days')),
     is_active: formData.get('is_active') === 'on',

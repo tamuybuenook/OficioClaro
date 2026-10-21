@@ -4,9 +4,17 @@ import Script from 'next/script'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'OficioClaro — Precios para tu oficio',
-  description: 'Consultá precios de trabajos, armá presupuestos y mantené tu lista actualizada.',
-  generator: 'v0.app',
+  metadataBase: new URL('https://oficioclaro.vercel.app'),
+  title: 'OficioClaro — Precios y presupuestos para tu oficio',
+  description: 'Consultá precios de referencia, prepará presupuestos y organizá tus clientes desde el celular, sin instalar nada. Probalo gratis.',
+  openGraph: {
+    title: 'OficioClaro — Tu oficio vale. Organizarlo no debería ser complicado.',
+    description: 'Precios de referencia, presupuestos y clientes en un solo lugar. Sin instalar nada.',
+    siteName: 'OficioClaro',
+    locale: 'es_AR',
+    type: 'website',
+  },
+  twitter: { card: 'summary_large_image' },
   manifest: '/manifest.json',
   icons: {
     icon: [
@@ -27,6 +35,9 @@ export const metadata: Metadata = {
   },
 }
 
+// Aplica el tema guardado antes del primer pintado (evita el destello del tema equivocado).
+const themeInitScript = `try{var t=localStorage.getItem('oficioclaro-theme')||'system';var r=document.documentElement;r.classList.toggle('dark',t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches));r.classList.toggle('light',t==='light')}catch(e){}`
+
 export const viewport: Viewport = {
   colorScheme: 'light dark',
   themeColor: [
@@ -41,7 +52,10 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="es">
+    <html lang="es" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body className="antialiased">
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}

@@ -67,7 +67,7 @@ export function BulkLoadPanel({ tradeId, tradeName }: { tradeId: string; tradeNa
           <table className="w-full text-left text-xs">
             <tbody>
               {rows.map((r, i) => 'error' in r ? (
-                <tr key={i} className="border-t border-[var(--oc-border-soft)] bg-[#fdecea]"><td className="p-2 text-[var(--oc-coral)]" colSpan={3}>{r.error}: "{r.raw}"</td></tr>
+                <tr key={i} className="border-t border-[var(--oc-border-soft)] bg-[var(--oc-danger-bg)]"><td className="p-2 text-[var(--oc-coral)]" colSpan={3}>{r.error}: "{r.raw}"</td></tr>
               ) : (
                 <tr key={i} className="border-t border-[var(--oc-border-soft)]"><td className="p-2">{r.category}</td><td className="p-2">{r.name}</td><td className="p-2 font-bold">{r.ut}</td></tr>
               ))}

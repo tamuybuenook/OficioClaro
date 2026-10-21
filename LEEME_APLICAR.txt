@@ -1,0 +1,3 @@
+Copiar estos archivos sobre el proyecto respetando las rutas (sobrescribe los existentes).
+Luego: pnpm typecheck && pnpm test
+No es una copia completa del proyecto. No incluye secretos.

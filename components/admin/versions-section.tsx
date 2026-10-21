@@ -113,7 +113,7 @@ export function VersionsSection({ priceListId, versions, masterUtValue, tradeNam
       {priceListId && sorted.length === 0 && <p className="mt-2 text-xs text-[var(--oc-muted)]">Todavía no hay versiones. Creá la primera con “+ Nueva versión”.</p>}
 
       {notice && (
-        <p role={notice.kind === 'error' ? 'alert' : 'status'} className={`mt-3 rounded-lg px-3 py-2 text-xs font-semibold ${notice.kind === 'error' ? 'bg-[#fdecea] text-[var(--oc-coral)]' : 'bg-[var(--oc-success-bg)] text-[var(--oc-success-text)]'}`}>
+        <p role={notice.kind === 'error' ? 'alert' : 'status'} className={`mt-3 rounded-lg px-3 py-2 text-xs font-semibold ${notice.kind === 'error' ? 'bg-[var(--oc-danger-bg)] text-[var(--oc-coral)]' : 'bg-[var(--oc-success-bg)] text-[var(--oc-success-text)]'}`}>
           {notice.text}
         </p>
       )}
@@ -152,7 +152,7 @@ export function VersionsSection({ priceListId, versions, masterUtValue, tradeNam
             <button onClick={() => { setReview(null); setReviewId(null) }} className="text-xs font-bold text-[var(--oc-muted)]">Cerrar</button>
           </div>
           {review.validation.errors.length > 0 && (
-            <ul className="mt-2 list-disc rounded-lg bg-[#fdecea] py-2 pl-6 pr-3 text-xs font-semibold text-[var(--oc-coral)]">
+            <ul className="mt-2 list-disc rounded-lg bg-[var(--oc-danger-bg)] py-2 pl-6 pr-3 text-xs font-semibold text-[var(--oc-coral)]">
               {review.validation.errors.map((e) => <li key={e}>{e}</li>)}
             </ul>
           )}
@@ -167,7 +167,7 @@ export function VersionsSection({ priceListId, versions, masterUtValue, tradeNam
               <thead><tr className="text-[var(--oc-muted)]"><th className="py-1.5">Trabajo</th><th>UT</th><th>Precio</th><th>UT × ref.</th></tr></thead>
               <tbody>
                 {review.items.map((i) => (
-                  <tr key={i.id} className={`border-t border-[var(--oc-border-soft)] ${i.differs ? 'bg-[#fff6e5]' : ''}`}>
+                  <tr key={i.id} className={`border-t border-[var(--oc-border-soft)] ${i.differs ? 'bg-[var(--oc-warning-bg)]' : ''}`}>
                     <td className="py-1.5">{i.name}</td>
                     <td>{i.ut ?? '—'}</td>
                     <td className="font-bold">{money(i.price)}</td>

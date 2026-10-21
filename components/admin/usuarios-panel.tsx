@@ -23,7 +23,7 @@ export function UsuariosPanel({ users, plans }: { users: User[]; plans: Plan[] }
     if (!window.confirm(`¿Borrar a ${name || 'este usuario'}? Es permanente.`)) return
     startTransition(async () => {
       const res = await deleteUser(userId)
-      if (res && 'error' in res) setError(res.error)
+      if (res && 'error' in res && res.error) setError(res.error)
     })
   }
 
@@ -31,13 +31,14 @@ export function UsuariosPanel({ users, plans }: { users: User[]; plans: Plan[] }
     if (!planId) return
     startTransition(async () => {
       const res = await adminSetUserPlan(userId, planId, status as any)
-      if (res && 'error' in res) setError(res.error)
+      if (res && 'error' in res && res.error) setError(res.error)
+      else if (res && 'warning' in res && res.warning) setError(res.warning)
     })
   }
 
   return (
     <div>
-      {error && <p className="mt-3 rounded-xl bg-[#fdecea] p-3 text-sm font-semibold text-[var(--oc-coral)]">{error}</p>}
+      {error && <p className="mt-3 rounded-xl bg-[var(--oc-danger-bg)] p-3 text-sm font-semibold text-[var(--oc-coral)]">{error}</p>}
       <div className="mt-5 overflow-x-auto rounded-2xl border border-[var(--oc-border)] bg-[var(--oc-surface)]">
         <table className="w-full min-w-[700px] text-left text-sm">
           <thead><tr className="border-b border-[var(--oc-border-soft)] text-xs text-[var(--oc-muted)]"><th className="p-3">Nombre</th><th>Rol</th><th>Plan</th><th>Estado</th><th></th></tr></thead>

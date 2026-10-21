@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { updatePlan } from '@/lib/actions/subscriptions'
+import { PLAN_PERIODS, periodOptionLabel, periodUnit } from '@/lib/plan-period'
 
 type Plan = { id: string; name: string; price: number; billing_period: string; max_trades: number | null; trial_days: number; is_active: boolean }
 
@@ -25,8 +26,7 @@ export function PlanesPanel({ plans }: { plans: Plan[] }) {
               <input name="name" defaultValue={p.name} className="rounded-lg border border-[var(--oc-border)] p-2 text-sm font-bold" />
               <input name="price" type="number" defaultValue={p.price} className="rounded-lg border border-[var(--oc-border)] p-2 text-sm" placeholder="Precio" />
               <select name="billing_period" defaultValue={p.billing_period} className="rounded-lg border border-[var(--oc-border)] p-2 text-sm">
-                <option value="monthly">Mensual</option>
-                <option value="yearly">Anual</option>
+                {PLAN_PERIODS.map((v) => <option key={v} value={v}>{periodOptionLabel(v)}</option>)}
               </select>
               <input name="max_trades" type="number" defaultValue={p.max_trades ?? ''} placeholder="Oficios (vacío = todos)" className="rounded-lg border border-[var(--oc-border)] p-2 text-sm" />
               <input name="trial_days" type="number" defaultValue={p.trial_days} placeholder="Días de prueba" className="rounded-lg border border-[var(--oc-border)] p-2 text-sm" />
@@ -39,7 +39,7 @@ export function PlanesPanel({ plans }: { plans: Plan[] }) {
           ) : (
             <>
               <p className="font-bold">{p.name}</p>
-              <p className="mt-1 text-xl font-bold text-[var(--oc-brand)]">${p.price.toLocaleString('es-AR')}/{p.billing_period === 'monthly' ? 'mes' : 'año'}</p>
+              <p className="mt-1 text-xl font-bold text-[var(--oc-brand)]">${p.price.toLocaleString('es-AR')}/{periodUnit(p.billing_period)}</p>
               <p className="mt-2 text-sm text-[var(--oc-muted)]">{p.max_trades === null ? 'Todos los oficios' : `${p.max_trades} oficio(s)`}</p>
               <p className="mt-1 text-xs text-[var(--oc-muted)]">{p.trial_days} días gratis · {p.is_active ? 'Activo' : 'Inactivo'}</p>
               <button onClick={() => setEditing(p.id)} className="mt-3 text-xs font-bold text-[var(--oc-brand)]">Editar</button>

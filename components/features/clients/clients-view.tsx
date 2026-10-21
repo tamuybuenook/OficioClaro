@@ -21,10 +21,10 @@ function ClientForm({ defaultValues, onSubmit, pending, submitLabel }: { default
   )
 }
 
-export function ClientsUpdated({ customers }: { customers: Customer[] }) {
+export function ClientsUpdated({ customers, initialOpenId = null, onSchedule, onOpenJob }: { customers: Customer[]; initialOpenId?: string | null; onSchedule?: (customerId: string) => void; onOpenJob?: (jobId: string) => void }) {
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [openId, setOpenId] = useState<string | null>(null)
+  const [openId, setOpenId] = useState<string | null>(initialOpenId)
   const [pending, startTransition] = useTransition()
 
   function handleCreate(formData: FormData) {
@@ -37,7 +37,7 @@ export function ClientsUpdated({ customers }: { customers: Customer[] }) {
     setEditingId(null)
   }
 
-  if (openId) return <ClientDetail customerId={openId} onBack={() => setOpenId(null)} />
+  if (openId) return <ClientDetail customerId={openId} onBack={() => setOpenId(null)} onSchedule={onSchedule} onOpenJob={onOpenJob} />
 
   return (
     <div className="mx-auto max-w-[1040px] p-5 pb-28 md:p-8">

@@ -14,6 +14,7 @@ async function logActivity(customerId: string | null, type: string, description?
 }
 
 import { getMyQuotes, getQuoteWithItems } from '@/lib/services/quotes'
+import { requireFullAccess } from '@/lib/services/access'
 
 export async function fetchMyQuotes() {
   return getMyQuotes()
@@ -24,6 +25,8 @@ export async function fetchQuoteDetail(quoteId: string) {
 }
 
 export async function createQuote(customerId: string | null) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
@@ -43,6 +46,8 @@ export async function createQuote(customerId: string | null) {
 }
 
 export async function setQuoteStatus(quoteId: string, customerId: string | null, status: 'draft' | 'sent' | 'accepted' | 'rejected') {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { error } = await supabase.from('quotes').update({ status }).eq('id', quoteId)
   if (error) return { error: error.message }
@@ -61,19 +66,28 @@ async function recalculateTotal(quoteId: string) {
 
 // Agrega un ítem usando "mi precio" (personalizado/UT/referencia, sección 11) como precio unitario por defecto.
 export async function addQuoteItem(quoteId: string, serviceId: string, quantity: number) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const pricing = await getServicePricing(serviceId, user?.id)
   if (!pricing) return { error: 'El servicio no tiene un precio vigente.' }
 
   const subtotal = round2(pricing.personalPrice * quantity)
-  const { error } = await supabase.from('quote_items').insert({
+  const { data: service } = await supabase.from('services').select('name').eq('id', serviceId).maybeSingle()
+  const row = {
     quote_id: quoteId,
     service_id: serviceId,
     quantity,
     unit_price: pricing.personalPrice,
     subtotal,
-  })
+  }
+  // description: copia histórica del nombre del servicio (migración 0022). Si la columna todavía no
+  // existe, se inserta igual sin ella para no frenar la presupuestación.
+  let { error } = await supabase.from('quote_items').insert({ ...row, description: service?.name ?? null })
+  if (error && (error.code === '42703' || error.code === 'PGRST204')) {
+    ;({ error } = await supabase.from('quote_items').insert(row))
+  }
   if (error) return { error: error.message }
 
   await recalculateTotal(quoteId)
@@ -81,6 +95,8 @@ export async function addQuoteItem(quoteId: string, serviceId: string, quantity:
 }
 
 export async function updateQuoteItemQuantity(itemId: string, quoteId: string, quantity: number) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { data: item, error: itemError } = await supabase.from('quote_items').select('unit_price').eq('id', itemId).single()
   if (itemError || !item) return { error: itemError?.message ?? 'Ítem no encontrado' }
@@ -94,6 +110,8 @@ export async function updateQuoteItemQuantity(itemId: string, quoteId: string, q
 }
 
 export async function removeQuoteItem(itemId: string, quoteId: string) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { error } = await supabase.from('quote_items').delete().eq('id', itemId)
   if (error) return { error: error.message }
@@ -103,6 +121,8 @@ export async function removeQuoteItem(itemId: string, quoteId: string) {
 }
 
 export async function deleteQuote(quoteId: string) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { error } = await supabase.from('quotes').delete().eq('id', quoteId)
   if (error) return { error: error.message }

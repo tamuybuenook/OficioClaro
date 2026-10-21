@@ -2,8 +2,11 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { requireFullAccess } from '@/lib/services/access'
 
 export async function createCustomer(formData: FormData) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
@@ -26,6 +29,8 @@ export async function createCustomer(formData: FormData) {
 }
 
 export async function updateCustomer(id: string, formData: FormData) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { error } = await supabase
     .from('customers')
@@ -42,6 +47,8 @@ export async function updateCustomer(id: string, formData: FormData) {
 }
 
 export async function deleteCustomer(id: string) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { error } = await supabase.from('customers').delete().eq('id', id)
   if (error) return { error: error.message }

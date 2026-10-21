@@ -6,6 +6,7 @@ import {
   updateQuoteItemQuantity, removeQuoteItem, deleteQuote, setQuoteStatus,
 } from '@/lib/actions/quotes'
 import { ArrowLeft, Trash2 } from 'lucide-react'
+import { fetchJobForQuote } from '@/lib/actions/agenda'
 import type { Job } from '@/components/types'
 
 const statusLabel: Record<string, string> = { draft: 'Borrador', sent: 'Enviado', accepted: 'Aceptado', rejected: 'Rechazado' }
@@ -13,7 +14,7 @@ const money = (v: number) => `$${Number(v).toLocaleString('es-AR')}`
 
 type Customer = { id: string; name: string; phone: string | null }
 
-export function QuotesView({ customers, jobs }: { customers: Customer[]; jobs: Job[] }) {
+export function QuotesView({ customers, jobs, onSchedule }: { customers: Customer[]; jobs: Job[]; onSchedule?: (quoteId: string) => void }) {
   const [quotes, setQuotes] = useState<any[] | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
@@ -34,7 +35,7 @@ export function QuotesView({ customers, jobs }: { customers: Customer[]; jobs: J
     })
   }
 
-  if (openId) return <QuoteDetail quoteId={openId} jobs={jobs} onBack={() => { setOpenId(null); reload() }} />
+  if (openId) return <QuoteDetail quoteId={openId} jobs={jobs} onSchedule={onSchedule} onBack={() => { setOpenId(null); reload() }} />
 
   return (
     <div className="mx-auto max-w-[1040px] p-5 pb-28 md:p-8">
@@ -57,11 +58,19 @@ export function QuotesView({ customers, jobs }: { customers: Customer[]; jobs: J
   )
 }
 
-function QuoteDetail({ quoteId, jobs, onBack }: { quoteId: string; jobs: Job[]; onBack: () => void }) {
+function QuoteDetail({ quoteId, jobs, onBack, onSchedule }: { quoteId: string; jobs: Job[]; onBack: () => void; onSchedule?: (quoteId: string) => void }) {
   const [data, setData] = useState<{ quote: any; items: any[] } | null>(null)
+  const [hasJob, setHasJob] = useState(false) // ¿ya hay un trabajo activo agendado para este presupuesto?
   const [pending, startTransition] = useTransition()
 
-  async function reload() { setData(await fetchQuoteDetail(quoteId)) }
+  async function reload() {
+    const detail = await fetchQuoteDetail(quoteId)
+    setData(detail)
+    if (detail.quote.status === 'accepted') {
+      const job = await fetchJobForQuote(quoteId).catch(() => null)
+      setHasJob(!!job?.data)
+    } else setHasJob(false)
+  }
   useEffect(() => { reload() }, [quoteId])
 
   if (!data) return <div className="mx-auto max-w-[1040px] p-5">Cargando…</div>
@@ -78,7 +87,7 @@ function QuoteDetail({ quoteId, jobs, onBack }: { quoteId: string; jobs: Job[]; 
 
   function sendWhatsapp() {
     const phone = quote.customers?.phone?.replace(/\D/g, '')
-    const lines = items.map((it: any, i: number) => `${i + 1}. ${it.services?.name} x${it.quantity} — ${money(it.subtotal)}`)
+    const lines = items.map((it: any, i: number) => `${i + 1}. ${it.description ?? it.services?.name} x${it.quantity} — ${money(it.subtotal)}`)
     const text = [
       `Presupuesto Nº ${String(quote.number ?? '?').padStart(5, '0')}`,
       `Cliente: ${quote.customers?.name ?? ''}`,
@@ -113,7 +122,7 @@ function QuoteDetail({ quoteId, jobs, onBack }: { quoteId: string; jobs: Job[]; 
           {items.length === 0 && <p className="py-3 text-sm text-[var(--oc-muted)]">Todavía no agregaste trabajos.</p>}
           {items.map((it: any) => (
             <div key={it.id} className="flex items-center justify-between gap-3 py-3">
-              <div className="min-w-0 flex-1"><p className="truncate font-semibold text-[var(--oc-ink)]">{it.services?.name}</p><p className="text-xs text-[var(--oc-muted)]">{money(it.unit_price)} c/u</p></div>
+              <div className="min-w-0 flex-1"><p className="truncate font-semibold text-[var(--oc-ink)]">{it.description ?? it.services?.name}</p><p className="text-xs text-[var(--oc-muted)]">{money(it.unit_price)} c/u</p></div>
               <input type="number" min={1} defaultValue={it.quantity} onBlur={(e) => startTransition(async () => { await updateQuoteItemQuantity(it.id, quoteId, Number(e.target.value) || 1); reload() })} className="w-16 rounded-lg border border-[var(--oc-border)] p-1.5 text-center text-sm" />
               <p className="w-24 text-right font-bold text-[var(--oc-brand)]">{money(it.subtotal)}</p>
               <button onClick={() => startTransition(async () => { await removeQuoteItem(it.id, quoteId); reload() })}><Trash2 className="size-4 text-[var(--oc-coral)]" /></button>
@@ -122,6 +131,12 @@ function QuoteDetail({ quoteId, jobs, onBack }: { quoteId: string; jobs: Job[]; 
         </div>
         <div className="mt-4 flex items-center justify-between border-t border-[var(--oc-border-soft)] pt-4"><p className="font-bold text-[var(--oc-ink)]">Total</p><p className="text-xl font-bold text-[var(--oc-brand)]">{money(quote.total)}</p></div>
       </div>
+
+      {quote.status === 'accepted' && onSchedule && (
+        <button type="button" onClick={() => onSchedule(quoteId)} className="mt-4 min-h-11 w-full rounded-xl bg-[var(--oc-coral)] px-4 py-3 text-sm font-bold text-white">
+          {hasJob ? 'Ver el trabajo en la agenda' : 'Programar trabajo'}
+        </button>
+      )}
 
       <button onClick={sendWhatsapp} disabled={items.length === 0} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">Enviar por WhatsApp</button>
     </div>

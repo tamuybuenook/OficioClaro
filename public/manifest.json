@@ -4,8 +4,8 @@
   "description": "Precios claros para tu oficio.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#eef3f4",
-  "theme_color": "#123852",
+  "background_color": "#fbf7f0",
+  "theme_color": "#b4513a",
   "icons": [
     { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
     { "src": "/apple-icon.png", "sizes": "180x180", "type": "image/png" }

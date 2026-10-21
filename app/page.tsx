@@ -1,13 +1,18 @@
 import { createClient } from '@/lib/supabase/server'
 import { getMyList } from '@/lib/services/myList'
 import { getMyCustomers } from '@/lib/services/customers'
-import { getMySubscription } from '@/lib/services/subscriptions'
-import { getMyEnabledTradeIds, getMyTradeLimit } from '@/lib/services/userTrades'
+import { getActivePlans, getMySubscription } from '@/lib/services/subscriptions'
+import { getMyPayments } from '@/lib/services/payments'
+import { getMpConfig } from '@/lib/mercadopago/config'
+import { displayState } from '@/lib/subscription-access'
+import { getMyEnabledTradeIds } from '@/lib/services/userTrades'
+import { getMyAccess } from '@/lib/services/access'
 import { getMasterUtCurrent } from '@/lib/services/masterUt'
 import { AppShell, type Job } from '@/components/app-shell'
 import { LandingPage } from '@/components/landing/landing-page'
 
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: Promise<{ vista?: string; mp?: string }> }) {
+  const sp = await searchParams
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -30,13 +35,22 @@ export default async function Page() {
 
   const { data: allTrades } = await supabase.from('trades').select('id, name, slug').eq('is_active', true).order('name')
 
-  const [list, customers, subscription, enabledTradeIds, tradeLimit, masterUtValue] = await Promise.all([
-    getMyList(),
-    getMyCustomers().catch(() => []),
+  // Acceso según la fase de la suscripción. Bloqueado = solo ve Suscripción/pago: no se cargan sus datos de trabajo.
+  const access = await getMyAccess()
+  const locked = access.locked
+
+  let mpAvailable = false
+  try { getMpConfig(); mpAvailable = true } catch { /* sin configurar: la UI ofrece solo transferencia */ }
+
+  const [list, customers, subscription, enabledTradeIds, tradeLimit, masterUtValue, plans, payments] = await Promise.all([
+    locked ? Promise.resolve([]) : getMyList(),
+    locked ? Promise.resolve([]) : getMyCustomers().catch(() => []),
     getMySubscription().catch(() => null),
-    user ? getMyEnabledTradeIds(user.id) : Promise.resolve([]),
-    user ? getMyTradeLimit(user.id) : Promise.resolve(0),
+    locked ? Promise.resolve([]) : getMyEnabledTradeIds(user.id),
+    Promise.resolve(access.hasAccess ? access.maxTrades : 0),
     getMasterUtCurrent(),
+    getActivePlans().catch(() => []),
+    getMyPayments().catch(() => []),
   ])
 
   const jobs: Job[] = list.map(({ service, pricing }) => ({
@@ -77,7 +91,7 @@ export default async function Page() {
       }
     : null
 
-  const trades = { all: allTrades ?? [], enabledIds: enabledTradeIds, limit: tradeLimit }
+  const trades = { all: locked ? [] : allTrades ?? [], enabledIds: enabledTradeIds, limit: tradeLimit }
 
   return (
     <AppShell
@@ -89,9 +103,29 @@ export default async function Page() {
       isAdminUser={profileRow?.role === 'admin'}
       subscription={
         subscription
-          ? { id: subscription.id, planName: (subscription as any).plans?.name ?? 'Plan', status: subscription.status, endDate: subscription.end_date }
+          ? {
+              id: subscription.id,
+              planName: (subscription as any).plans?.name ?? 'Plan',
+              status: subscription.status,
+              endDate: subscription.end_date,
+              state: access.phase === 'grace' ? 'past_due' : displayState(subscription),
+              planId: subscription.plan_id,
+              autoRenew: subscription.mp_status === 'authorized',
+              autoRenewPending: subscription.mp_status === 'pending',
+            }
           : null
       }
+      access={{ phase: access.phase, locked, daysToEnd: access.daysToEnd, graceEndsOn: access.graceEndsOn, endDate: subscription?.end_date ?? null, subStatus: access.subStatus }}
+      billing={{
+        mpAvailable,
+        plans: plans.map((p: any) => ({ id: p.id, name: p.name, price: Number(p.price), billingPeriod: p.billing_period, maxTrades: p.max_trades ?? null })),
+        payments: (payments as any[])
+          .filter((x) => x.mp_status !== 'creation_failed' && x.mp_status !== 'created')
+          .slice(0, 10)
+          .map((x) => ({ id: x.id, createdAt: x.created_at, amount: Number(x.amount), status: x.status, provider: x.provider, planName: x.plan?.name ?? x.subscriptions?.plans?.name ?? null })),
+        mpReturn: sp.mp === 'ok' || sp.mp === 'pending' || sp.mp === 'error' ? sp.mp : null,
+      }}
+      initialView={sp.vista === 'suscripcion' ? 'subscription' : undefined}
     />
   )
 }

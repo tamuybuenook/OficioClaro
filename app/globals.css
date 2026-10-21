@@ -180,6 +180,21 @@
   --oc-hero-from: #0c2c42;
   --oc-hero-via: #123852;
   --oc-hero-to: #1c5a70;
+  /* Tokens que antes estaban escritos como hex sueltos en los componentes (valores claros = originales) */
+  --oc-ivory: oklch(0.985 0.01 105);
+  --oc-sage-text: #47634f;
+  --oc-sage-bg: #edf1eb;
+  --oc-sage-bg-hover: #e3eae1;
+  --oc-danger-bg: #fdecea;
+  --oc-warm-bg: #f5eee7;
+  --oc-warm-bg-hover: #f1e5db;
+  --oc-warm-card: #fffaf7;
+  --oc-warm-border: #e8c7b6;
+  --oc-warm-text: #754936;
+  --oc-warm-label: #93624d;
+  --oc-warm-strong: #ad6245;
+  --oc-warm-chip: #f1d9c9;
+  --oc-on-deep: #f4f8f8;
 }
 
 .dark {
@@ -209,6 +224,19 @@
   --oc-hero-from: #061119;
   --oc-hero-via: #0c2c42;
   --oc-hero-to: #16495a;
+  --oc-ivory: #0a141c;
+  --oc-sage-text: #a9cdb3;
+  --oc-sage-bg: #1b2f27;
+  --oc-sage-bg-hover: #233b31;
+  --oc-danger-bg: #3d2022;
+  --oc-warm-bg: #3a2a24;
+  --oc-warm-bg-hover: #47342c;
+  --oc-warm-card: #2f2420;
+  --oc-warm-border: #6b4a3c;
+  --oc-warm-text: #ffc4ad;
+  --oc-warm-label: #ffb394;
+  --oc-warm-strong: #ff9b79;
+  --oc-warm-chip: #4a3329;
 }
 
 @layer base {
@@ -218,4 +246,46 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* ───────── Sitio público (landing, login, registro) ─────────
+   Alias de los tokens --oc-* de la marca: un solo origen de colores y el tema oscuro funciona solo. */
+.lp {
+  --lp-ivory: var(--oc-ivory);
+  --lp-paper: var(--oc-surface);
+  --lp-sand: var(--oc-surface-soft);
+  --lp-line: var(--oc-border);
+  --lp-ink: var(--oc-ink);
+  --lp-ink-soft: var(--oc-muted);
+  --lp-brand: var(--oc-brand);
+  --lp-coral: var(--oc-coral);
+  --lp-coral-soft: var(--oc-coral-soft);
+  --lp-salvia: var(--oc-sage-text);
+  --lp-salvia-soft: var(--oc-sage-bg);
+  --lp-deep: var(--oc-hero-via);
+  --lp-on-deep: var(--oc-on-deep);
+  --lp-on-coral: #ffffff;
+  --font-display: var(--font-fraunces), Georgia, 'Times New Roman', serif;
+  --font-body: var(--font-figtree), system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: var(--lp-ivory);
+  color: var(--lp-ink);
+  font-family: var(--font-body);
+}
+.dark .lp { --lp-on-coral: var(--oc-on-brand); }
+.lp h1, .lp h2, .lp h3, .lp .font-display { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.01em; }
+.lp :focus-visible { outline: 3px solid var(--lp-brand); outline-offset: 3px; border-radius: 6px; }
+/* Texto de botón de 19px en negrita = "texto grande" (AA con contraste ≥ 3:1 sobre el coral original) */
+.lp-btn { display: inline-flex; min-height: 52px; align-items: center; justify-content: center; gap: .5rem; border-radius: 14px; padding: .75rem 1.5rem; font-weight: 700; font-size: 1.1875rem; transition: filter .15s, background-color .15s, box-shadow .15s; }
+.lp-btn-primary { background: var(--lp-coral); color: var(--lp-on-coral); box-shadow: 0 8px 20px -12px var(--lp-coral); }
+.lp-btn-primary:hover { filter: brightness(.94); }
+.lp-btn-brand { background: var(--lp-brand); color: var(--oc-on-brand); font-size: 1rem; }
+.lp-btn-brand:hover { filter: brightness(1.12); }
+.lp-btn-ghost { border: 2px solid var(--lp-brand); color: var(--lp-brand); background: transparent; }
+.lp-btn-ghost:hover { background: var(--lp-brand); color: var(--oc-on-brand); }
+.lp-input { width: 100%; min-height: 52px; border-radius: 12px; border: 2px solid var(--lp-line); background: var(--lp-paper); padding: .75rem 1rem; font-size: 1rem; color: var(--lp-ink); }
+.lp-input:focus { outline: none; border-color: var(--lp-brand); box-shadow: 0 0 0 4px var(--oc-brand-soft); }
+html { scroll-behavior: smooth; scroll-padding-top: 88px; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .lp *, .lp *::before, .lp *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }

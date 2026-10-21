@@ -2,8 +2,11 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { requireFullAccess } from '@/lib/services/access'
 
 export async function updateMyProfile(formData: FormData) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
@@ -26,6 +29,8 @@ export async function updateMyProfile(formData: FormData) {
 // Datos de cobro (sección 14): el profesional los guarda para compartirlos con sus clientes.
 // No es una integración bancaria ni procesa pagos.
 export async function updateMyPaymentDetails(formData: FormData) {
+  const denied = await requireFullAccess()
+  if (denied) return { error: denied.error }
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }

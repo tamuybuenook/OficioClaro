@@ -107,7 +107,7 @@ export function CatalogoAdmin({ trades, categories, services, versions, priceLis
       </div>
 
       {notice && (
-        <p role={notice.kind === 'error' ? 'alert' : 'status'} className={`mt-4 rounded-xl px-4 py-3 text-sm font-semibold ${notice.kind === 'error' ? 'bg-[#fdecea] text-[var(--oc-coral)]' : 'bg-[var(--oc-success-bg)] text-[var(--oc-success-text)]'}`}>{notice.text}</p>
+        <p role={notice.kind === 'error' ? 'alert' : 'status'} className={`mt-4 rounded-xl px-4 py-3 text-sm font-semibold ${notice.kind === 'error' ? 'bg-[var(--oc-danger-bg)] text-[var(--oc-coral)]' : 'bg-[var(--oc-success-bg)] text-[var(--oc-success-text)]'}`}>{notice.text}</p>
       )}
 
       {trades.map((trade) => {
@@ -119,7 +119,7 @@ export function CatalogoAdmin({ trades, categories, services, versions, priceLis
         return (
           <section key={trade.id} className="mt-6 rounded-2xl border border-[var(--oc-border)] bg-[var(--oc-surface)] p-5">
             <div className="flex items-center justify-between">
-              <h2 className="font-bold text-[var(--oc-ink)]">{trade.name} {!trade.is_active && <span className="ml-2 rounded-full bg-[#fdecea] px-2 py-0.5 text-[10px] font-bold text-[var(--oc-coral)]">Inactivo</span>}</h2>
+              <h2 className="font-bold text-[var(--oc-ink)]">{trade.name} {!trade.is_active && <span className="ml-2 rounded-full bg-[var(--oc-danger-bg)] px-2 py-0.5 text-[10px] font-bold text-[var(--oc-coral)]">Inactivo</span>}</h2>
               <div className="flex items-center gap-2">
                 <button onClick={() => renameTrade(trade)} className="text-xs font-bold text-[var(--oc-brand)]">Renombrar</button>
                 <button onClick={() => toggleActive(trade)} className="text-xs font-bold text-[var(--oc-coral)]">{trade.is_active ? 'Desactivar' : 'Reactivar'}</button>
