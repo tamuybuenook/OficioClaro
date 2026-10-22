@@ -36,3 +36,8 @@ Decisiones 6c (2026-10-20): prueba terminada sin pago → sin gracia y solo Susc
 
 ## Archivos a adjuntar en el chat nuevo
 El proyecto completo actualizado en ZIP (sin node_modules/.next/.env) y este archivo.
+
+## Actualización 21/10/2026 (cierre del diagnóstico MP) — ver `docs/INFORME_DIAGNOSTICO_MP_0034.md`
+- Embeds `plans(...)` ambiguos desde `subscriptions`: **corregidos en el código** (`plans!plan_id`), con prueba estática. Falta desplegar y comprobar en pantalla.
+- Migración `0034_fix_service_role_permissions.sql` incorporada al ZIP, **NO aplicada**. Verificar con `supabase/diagnostics/0034_verify_service_role_grants.sql`.
+- Webhook: 401 de `payment.created` sin causa confirmada; el registro seguro ahora distingue «ipn» de «webhook». Falta ver el registro en Vercel con el parche desplegado.

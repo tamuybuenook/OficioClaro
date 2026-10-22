@@ -4,7 +4,7 @@ export async function getMyPayments() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('payments')
-    .select('*, plan:plans!plan_id(name), subscriptions(plan_id, plans(name))')
+    .select('*, plan:plans!plan_id(name), subscriptions(plan_id, plans!plan_id(name))')
     .order('created_at', { ascending: false })
   if (error) throw error
   return data
@@ -15,7 +15,7 @@ export async function getPendingPayments() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('payments')
-    .select('*, subscriptions(user_id, plan_id, plans(name, price), profiles(full_name))')
+    .select('*, subscriptions(user_id, plan_id, plans!plan_id(name, price), profiles(full_name))')
     .eq('status', 'pending')
     .order('created_at')
   if (error) throw error

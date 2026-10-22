@@ -14,7 +14,7 @@ export async function getMySubscription() {
 
   const { data, error } = await supabase
     .from('subscriptions')
-    .select('*, plans(*)')
+    .select('*, plans!plan_id(*)') // subscriptions tiene dos claves hacia plans (plan_id y mp_plan_id): sin la pista, PostgREST responde «ambiguo»
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .limit(1)

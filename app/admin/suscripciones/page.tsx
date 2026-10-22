@@ -4,7 +4,7 @@ export default async function SuscripcionesPage() {
   const supabase = await createClient()
   const { data: subs } = await supabase
     .from('subscriptions')
-    .select('id, status, start_date, end_date, plans(name), profiles(full_name)')
+    .select('id, status, start_date, end_date, plans!plan_id(name), profiles(full_name)')
     .order('start_date', { ascending: false })
     .limit(100)
 

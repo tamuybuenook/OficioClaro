@@ -47,12 +47,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ v
   const [list, customers, subscription, enabledTradeIds, tradeLimit, masterUtValue, plans, payments, notifSync] = await Promise.all([
     locked ? Promise.resolve([]) : getMyList(),
     locked ? Promise.resolve([]) : getMyCustomers().catch(() => []),
-    getMySubscription().catch(() => null),
+    getMySubscription().catch((e) => { console.error('[page] no se pudo leer la suscripción:', e?.code ?? 'sin_codigo'); return null }),
     locked ? Promise.resolve([]) : getMyEnabledTradeIds(user.id),
     Promise.resolve(access.hasAccess ? access.maxTrades : 0),
     getMasterUtCurrent(),
     getActivePlans().catch(() => []),
-    getMyPayments().catch(() => []),
+    getMyPayments().catch((e) => { console.error('[page] no se pudo leer el historial de pagos:', e?.code ?? 'sin_codigo'); return [] }),
     // Avisos: se sincronizan con la situación real (reutiliza el acceso ya calculado). Nunca lanza.
     syncNotifications(user.id, { access }),
   ])

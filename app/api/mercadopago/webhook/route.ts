@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getMpConfig } from '@/lib/mercadopago/config'
-import { verifyMpSignature } from '@/lib/mercadopago/signature'
+import { describeSignatureRejection, verifyMpSignature } from '@/lib/mercadopago/signature'
 import { createMpClient } from '@/lib/mercadopago/client'
 import { createSupabaseMpStore } from '@/lib/mercadopago/store'
 import { processMpEvent } from '@/lib/mercadopago/process-event'
@@ -20,7 +20,16 @@ export async function POST(request: NextRequest) {
   const dataId = url.searchParams.get('data.id')
   const requestId = request.headers.get('x-request-id')
 
-  if (!verifyMpSignature({ secret: config.webhookSecret, signatureHeader: request.headers.get('x-signature'), requestId, dataId })) {
+  const sigInput = { secret: config.webhookSecret, signatureHeader: request.headers.get('x-signature'), requestId, dataId }
+  if (!verifyMpSignature(sigInput)) {
+    // Diagnóstico seguro: solo categoría y datos no sensibles (sin secreto, firma, encabezados ni ids). La respuesta externa no cambia.
+    try {
+      // `formato`: «ipn» = aviso viejo (?id=…&topic=…, sin data.id; Mercado Pago documenta que no se puede validar con la clave secreta); «webhook» = el resto.
+      // `topic` solo se registra si es una palabra corta conocida (nunca texto libre).
+      const rawTopic = url.searchParams.get('topic') ?? url.searchParams.get('type')
+      const formato = !dataId && url.searchParams.has('id') && url.searchParams.has('topic') ? 'ipn' : 'webhook'
+      console.error('[mp-webhook] firma rechazada', JSON.stringify({ ...describeSignatureRejection(sigInput), formato, topic: rawTopic && /^[a-z_]{1,40}$/.test(rawTopic) ? rawTopic : null }))
+    } catch { /* el registro nunca debe alterar la respuesta */ }
     return NextResponse.json({ error: 'invalid_signature' }, { status: 401 })
   }
 
