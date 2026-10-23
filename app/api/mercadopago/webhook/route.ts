@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto'
 import { NextResponse, type NextRequest } from 'next/server'
 import { getMpConfig } from '@/lib/mercadopago/config'
-import { describeManifestInputs, describeSignatureRejection, describeSignatureStructure, verifyMpSignature } from '@/lib/mercadopago/signature'
+import { describeManifestInputs, describeSignatureRejection, describeSignatureStructure, diagnoseManifestVariants, verifyMpSignature } from '@/lib/mercadopago/signature'
+import { isReceiptOnlyMode, recordUnverifiedReceipt, RECEIPT_ONLY_OUTCOME, type ReceiptReason } from '@/lib/mercadopago/receipt-only'
 import { createMpClient, MpApiError, type MpClient } from '@/lib/mercadopago/client'
 import { createSupabaseMpStore, type MpStore } from '@/lib/mercadopago/store'
 import { processMpEvent } from '@/lib/mercadopago/process-event'
@@ -59,6 +60,8 @@ function tracedClient(mp: MpClient, trace: Trace): MpClient {
 }
 
 // Webhook de Mercado Pago. Respuestas: 401 firma inválida (o falta data.id fuera de merchant_order) · 400 id de evento contradictorio · 200 procesada/ignorada/rechazada por negocio · 500 error transitorio (MP reintenta).
+// MODO SOLO RECEPCIÓN (solo pruebas; ver lib/mercadopago/receipt-only.ts): con MP_ENV=test y MP_WEBHOOK_RECEIPT_ONLY=true, lo que hoy sería 401/400 responde 200 «received_unverified»,
+// se registra y NO se procesa nada. Con firma verificada y data.id el flujo es exactamente el de siempre. En producción este modo no existe.
 export async function POST(request: NextRequest) {
   const t0 = Date.now()
   const seguimiento = randomBytes(4).toString('hex')
@@ -110,7 +113,21 @@ export async function POST(request: NextRequest) {
   const sinIdPermitido = !dataId && body.dataId === null && !body.dataIdInvalido && topic === 'merchant_order'
   const sigInput = { secret: config.webhookSecret, signatureHeader, requestId, dataId, allowMissingDataId: sinIdPermitido }
   const manifest = describeManifestInputs({ signatureHeader, requestId, dataId })
-  const entorno = { mp_env: config.env, vercel_env: process.env.VERCEL_ENV ?? null, secreto_normalizado: config.webhookSecretNormalizado === true }
+  const receiptOnly = isReceiptOnlyMode(config.env)
+  const entorno = { mp_env: config.env, vercel_env: process.env.VERCEL_ENV ?? null, secreto_normalizado: config.webhookSecretNormalizado === true, modo_solo_recepcion: receiptOnly }
+  const ipnIdRaw = url.searchParams.get('id')
+  const ipnId = ipnIdRaw && SAFE_ID.test(ipnIdRaw) ? ipnIdRaw : null
+  // Confirma recepción SIN procesar: solo puede registrar el evento (logEvent/finishEvent). 200 = «llegó», nunca «aprobado».
+  const acknowledgeOnly = async (reason: ReceiptReason, firmaVerificada: boolean) => {
+    let eventId: string | null = null
+    try {
+      eventId = await recordUnverifiedReceipt(createSupabaseMpStore(createAdminClient()), {
+        topic, requestId, reason, formato, firmaVerificada, idPresente: !!dataId || body.dataId !== null || ipnId !== null,
+      })
+    } catch { trace('persistencia', { operacion: 'solo_recepcion', resultado: 'error' }, 'error') }
+    trace('evento', { topic, resultado: 'solo_recepcion', razon: reason, registrado: eventId !== null, firma_verificada: firmaVerificada, procesado: false })
+    return salida(200, { ok: true, outcome: RECEIPT_ONLY_OUTCOME, verified: firmaVerificada, processed: false })
+  }
   if (!verifyMpSignature(sigInput)) {
     const r = describeSignatureRejection(sigInput)
     // `motivo`: causa técnica concreta dentro de la categoría. Solo describe; no cambia ninguna decisión.
@@ -122,7 +139,11 @@ export async function POST(request: NextRequest) {
     trace('firma', {
       resultado: 'rechazada', ...r, motivo, manifest, ...entorno,
       ...(r.categoria === 'firma_no_coincide' ? { pistas: { ids_contradictorios: bothIds && body.dataId !== dataId, live_mode_cuerpo: body.liveMode } } : {}),
+      // Solo avisos IPN: ¿con qué manifest coincide la firma recibida? (booleanos; no decide nada). Ninguna coincide ⇒ secreto/modo equivocado; alguna ⇒ el manifest es el distinto.
+      ...(formato === 'ipn' ? { diagnostico_manifest: diagnoseManifestVariants({ secret: config.webhookSecret, signatureHeader, requestId, ipnId }) } : {}),
+      modo_solo_recepcion: receiptOnly,
     }, 'error')
+    if (receiptOnly) return acknowledgeOnly(r.categoria === 'firma_no_coincide' ? 'firma_no_verificada' : r.categoria, false)
     return salida(401, { error: 'invalid_signature' })
   }
   trace('firma', { resultado: 'aceptada', manifest, ...entorno })
@@ -144,6 +165,7 @@ export async function POST(request: NextRequest) {
   // Firma válida pero el cuerpo nombra otro recurso que la query: ambiguo, no se procesa nada.
   if (body.dataIdInvalido || (body.dataId !== null && body.dataId !== dataId)) {
     trace('evento', { topic, resultado: 'id_contradictorio', motivo: body.dataIdInvalido ? 'cuerpo_formato_invalido' : 'query_y_cuerpo_distintos' }, 'error')
+    if (receiptOnly) return acknowledgeOnly('ids_contradictorios', true)
     return salida(400, { error: 'ambiguous_event_id' })
   }
   trace('evento', { topic, resultado: 'aceptado' })

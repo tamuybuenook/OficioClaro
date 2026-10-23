@@ -44,3 +44,10 @@ El cron está **preparado, no comprobado**. Se considera activo recién cuando s
 1. *Vercel → proyecto → Settings → Cron Jobs* lista la ruta tras el deploy de Production.
 2. Se ejecuta a mano: `curl -H "Authorization: Bearer $CRON_SECRET" https://<dominio>/api/mercadopago/reconcile` → `200` con `{payments, preapprovals}` (sin cabecera: `401`; sin `CRON_SECRET` configurada: `404`).
 3. `/admin/configuracion` → «Conciliación periódica» pasa a «Última ejecución correcta» con la fecha real (cada ejecución deja un registro `mp_reconcile_run` / `mp_reconcile_failed` en `audit_logs`).
+
+## Modo temporal «solo recepción» (solo pruebas)
+Variable opcional `MP_WEBHOOK_RECEIPT_ONLY`. **Solo** el texto exacto `true` **y** `MP_ENV=test` lo activan; con `MP_ENV=production` no tiene ningún efecto.
+- Efecto: una notificación POST que hoy daría `401`/`400` (sin `data.id`, firma que no coincide, sin `x-request-id`, ids contradictorios) responde **HTTP 200** con `{"outcome":"received_unverified","verified":false,"processed":false}` y queda registrada en `mp_webhook_events` con `outcome=received_unverified`.
+- **200 = «llegó», no «aprobado».** No consulta a Mercado Pago, no toca pagos, suscripciones ni accesos, y no guarda el `data.id`/`id` no verificado.
+- Una notificación con firma válida y `data.id` sigue el flujo normal (consulta a la API, importe, idempotencia).
+- Quitar la variable (y redeploy) al terminar las pruebas: mientras esté activa, cualquiera que conozca la URL puede crear filas de registro.

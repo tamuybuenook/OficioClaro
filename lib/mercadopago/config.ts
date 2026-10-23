@@ -6,6 +6,8 @@
 //   APP_URL            URL pública base, sin barra final (https://oficioclaro.com)
 //   MP_ALLOW_TEST_IN_PRODUCTION  opcional. Solo el texto exacto 'true' permite MP_ENV=test en Production de Vercel
 //                      (para probar con credenciales de prueba, sin cobros reales). Cualquier otro valor o ausencia: se rechaza.
+//   MP_WEBHOOK_RECEIPT_ONLY  opcional, TEMPORAL, solo pruebas. Solo el texto exacto 'true' Y MP_ENV=test activan el modo «solo recepción»
+//                      (lib/mercadopago/receipt-only.ts): notificaciones no verificables → HTTP 200 + registro, sin procesar nada. Con MP_ENV=production no tiene efecto.
 
 /** `webhookSecretNormalizado`: true si al secreto se le quitaron espacios/saltos de línea o comillas envolventes (solo diagnóstico; nunca el valor). */
 export type MpConfig = { accessToken: string; webhookSecret: string; env: 'test' | 'production'; appUrl: string; webhookSecretNormalizado?: boolean }

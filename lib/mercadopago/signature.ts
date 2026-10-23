@@ -133,3 +133,39 @@ export function describeManifestInputs(opts: { signatureHeader: string | null; r
     ts: { presente: s.ts === 'ok', origen: 'cabecera x-signature (ts)' },
   }
 }
+
+// ───────── SOLO DIAGNÓSTICO: ¿con qué manifest coincide la firma recibida? ─────────
+// Nunca decide ni acepta nada. Sirve para distinguir «secreto equivocado» (ninguna variante coincide) de «manifest distinto»
+// (coincide una variante). Devuelve solo booleanos: jamás el secreto, la firma, el request-id ni los identificadores.
+
+export type ManifestVariantsDiagnosis = {
+  solo_diagnostico: true
+  /** Manifest del SDK con el par `id:` omitido (lo que hoy se prueba cuando falta data.id). */
+  sin_id: boolean
+  /** Manifest con el `id` del IPN tal cual. null si no hay id de IPN. */
+  con_id_ipn: boolean | null
+  /** Igual pero con el id del IPN en minúsculas (solo si difiere del anterior). */
+  con_id_ipn_minusculas: boolean | null
+}
+
+export function diagnoseManifestVariants(opts: { secret: string; signatureHeader: string | null; requestId: string | null; ipnId: string | null }): ManifestVariantsDiagnosis | null {
+  const { secret, signatureHeader, requestId, ipnId } = opts
+  if (!secret || !signatureHeader) return null
+  let ts: string | undefined
+  let v1: string | undefined
+  for (const part of signatureHeader.split(',')) {
+    const [k, v] = part.split('=', 2).map((x) => x?.trim())
+    if (k === 'ts') ts = v
+    else if (k === 'v1') v1 = v
+  }
+  if (!ts || !v1 || !/^[0-9a-f]{64}$/i.test(v1)) return null
+  const received = Buffer.from(v1, 'hex')
+  const matches = (id: string | null) => timingSafeEqual(createHmac('sha256', secret).update(buildMpManifest(id, requestId, ts!)).digest(), received)
+  const lower = ipnId ? ipnId.toLowerCase() : null
+  return {
+    solo_diagnostico: true,
+    sin_id: matches(null),
+    con_id_ipn: ipnId ? matches(ipnId) : null,
+    con_id_ipn_minusculas: ipnId && lower !== ipnId ? matches(lower) : null,
+  }
+}
