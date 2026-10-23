@@ -81,6 +81,12 @@ const PRE_COLS = 'id, subscription_id, plan_id, amount, preapproval_id, status, 
 const normalizePre = (r: any): PreapprovalRow | null => (r ? ({ ...r, amount: Number(r.amount) } as PreapprovalRow) : null)
 const SUB_COLS = 'id, user_id, plan_id, status, end_date, mp_preapproval_id, mp_plan_id, mp_amount, mp_status, mp_init_point, deletion_hold_at'
 
+/** Fallo al guardar en mp_webhook_events: se registra solo la operación y el código de error (p. ej. 42501 = permisos). Sin mensaje, sin datos del evento. */
+function tracePersistenceFailure(operacion: 'logEvent' | 'finishEvent', error: { code?: string }) {
+  const codigo = typeof error.code === 'string' && /^[A-Za-z0-9_]{1,16}$/.test(error.code) ? error.code : 'desconocido'
+  console.error('[MP_WEBHOOK_TRACE]', JSON.stringify({ etapa: 'persistencia', operacion, resultado: 'fallo', codigo }))
+}
+
 export function createSupabaseMpStore(db: SupabaseClient): MpStore {
   const fail = (e: { message: string } | null) => { if (e) throw new Error(e.message) }
   const mapBlocked = (e: { message: string } | null) => { if (e?.message?.includes('mp:renewals_blocked')) throw new RenewalsBlockedError(e.message) }
@@ -88,11 +94,14 @@ export function createSupabaseMpStore(db: SupabaseClient): MpStore {
     async logEvent(e) {
       const { data, error } = await db.from('mp_webhook_events')
         .insert({ topic: e.topic, data_id: e.dataId, request_id: e.requestId }).select('id').single()
-      return error ? null : (data?.id ?? null) // el registro es auditoría: no debe frenar el procesamiento
+      // El registro es auditoría: no frena el procesamiento, pero el fallo ya no es silencioso (solo código técnico, nunca mensaje ni datos).
+      if (error) { tracePersistenceFailure('logEvent', error); return null }
+      return data?.id ?? null
     },
     async finishEvent(id, outcome, detail) {
       if (!id) return
-      await db.from('mp_webhook_events').update({ outcome, detail: detail?.slice(0, 500) ?? null, processed_at: new Date().toISOString() }).eq('id', id)
+      const { error } = await db.from('mp_webhook_events').update({ outcome, detail: detail?.slice(0, 500) ?? null, processed_at: new Date().toISOString() }).eq('id', id)
+      if (error) tracePersistenceFailure('finishEvent', error)
     },
     async getIntent(id) {
       const { data, error } = await db.from('payments').select('id, subscription_id').eq('id', id).eq('provider', 'mercadopago').maybeSingle()

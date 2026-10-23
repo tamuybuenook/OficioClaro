@@ -7,7 +7,8 @@
 //   MP_ALLOW_TEST_IN_PRODUCTION  opcional. Solo el texto exacto 'true' permite MP_ENV=test en Production de Vercel
 //                      (para probar con credenciales de prueba, sin cobros reales). Cualquier otro valor o ausencia: se rechaza.
 
-export type MpConfig = { accessToken: string; webhookSecret: string; env: 'test' | 'production'; appUrl: string }
+/** `webhookSecretNormalizado`: true si al secreto se le quitaron espacios/saltos de línea o comillas envolventes (solo diagnóstico; nunca el valor). */
+export type MpConfig = { accessToken: string; webhookSecret: string; env: 'test' | 'production'; appUrl: string; webhookSecretNormalizado?: boolean }
 
 export class MpConfigError extends Error {}
 
@@ -33,11 +34,23 @@ function normalizeAppUrl(raw: string | undefined): string | null {
   } catch { return null }
 }
 
+/** Normaliza MP_WEBHOOK_SECRET: quita solo espacios/saltos de línea exteriores y UN par de comillas envolventes (pegado accidental en Vercel).
+ *  No toca caracteres internos. '' = ausente o vacío tras limpiar. null = contiene espacios o caracteres de control INTERNOS (la clave de MP no los tiene: se rechaza, nunca se «arregla»). */
+export function normalizeWebhookSecret(raw: string | undefined): string | null {
+  let v = (raw ?? '').trim()
+  const q = v.match(/^(["'])(.*)\1$/s)
+  if (q) v = q[2].trim()
+  if (!v) return ''
+  if (/[\s\u0000-\u001f\u007f\u00a0]/.test(v)) return null
+  return v
+}
+
 export function getMpConfig(env: NodeJS.ProcessEnv = process.env): MpConfig {
   const accessToken = env.MP_ACCESS_TOKEN
-  const webhookSecret = env.MP_WEBHOOK_SECRET
+  const webhookSecret = normalizeWebhookSecret(env.MP_WEBHOOK_SECRET)
   const appUrl = normalizeAppUrl(env.APP_URL)
   const mpEnv = env.MP_ENV
+  if (webhookSecret === null) throw new MpConfigError('MP_WEBHOOK_SECRET contiene espacios o saltos de línea internos: copiala de nuevo desde el panel de Mercado Pago.')
   if (!accessToken || !webhookSecret || appUrl === '') throw new MpConfigError('Mercado Pago no está configurado (faltan variables de entorno).')
   if (mpEnv !== 'test' && mpEnv !== 'production') throw new MpConfigError("MP_ENV debe ser 'test' o 'production'.")
   if (appUrl === null) throw new MpConfigError('APP_URL no es una URL válida (ejemplo: https://oficioclaro.vercel.app).')
@@ -49,5 +62,5 @@ export function getMpConfig(env: NodeJS.ProcessEnv = process.env): MpConfig {
   if (vercelEnv && vercelEnv !== 'production' && mpEnv !== 'test') throw new MpConfigError('Los entornos de preview/desarrollo deben usar MP_ENV=test.')
   // https obligatorio con credenciales de producción y también en el deployment Production (aunque use credenciales de prueba).
   if ((mpEnv === 'production' || vercelEnv === 'production') && !appUrl.startsWith('https://')) throw new MpConfigError('APP_URL debe ser https en producción.')
-  return { accessToken, webhookSecret, env: mpEnv, appUrl }
+  return { accessToken, webhookSecret, env: mpEnv, appUrl, webhookSecretNormalizado: webhookSecret !== env.MP_WEBHOOK_SECRET }
 }

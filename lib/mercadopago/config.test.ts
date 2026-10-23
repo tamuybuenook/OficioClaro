@@ -183,3 +183,40 @@ describe('APP_URL: texto pegado en el medio (caso real "Copiar")', () => {
   })
 })
 
+
+describe('MP_WEBHOOK_SECRET: normalización segura', () => {
+  const sec = (v: string | undefined) => getMpConfig(env({ MP_WEBHOOK_SECRET: v }))
+  it('valor limpio: sin cambios y sin marca de normalización', () => {
+    expect(sec(WHSEC)).toMatchObject({ webhookSecret: WHSEC, webhookSecretNormalizado: false })
+  })
+  it('espacios, tabs o saltos de línea exteriores: se quitan y queda marcado', () => {
+    for (const v of [` ${WHSEC}`, `${WHSEC}\n`, `\r\n${WHSEC}\t `])
+      expect(sec(v), JSON.stringify(v).length ? 'ext' : '').toMatchObject({ webhookSecret: WHSEC, webhookSecretNormalizado: true })
+  })
+  it('comillas envolventes (simples o dobles), con o sin espacios alrededor: se quitan', () => {
+    for (const v of [`"${WHSEC}"`, `'${WHSEC}'`, ` "${WHSEC}"\n`, `" ${WHSEC} "`])
+      expect(sec(v)).toMatchObject({ webhookSecret: WHSEC, webhookSecretNormalizado: true })
+  })
+  it('solo un par de comillas: no se pelan en capas ni se tocan comillas sueltas o internas', () => {
+    expect(() => sec(`""${WHSEC}""`)).not.toThrow()
+    expect(sec(`""${WHSEC}""`).webhookSecret).toBe(`"${WHSEC}"`)
+    expect(sec(`"${WHSEC}`).webhookSecret).toBe(`"${WHSEC}`) // comilla suelta: no se adivina
+    expect(sec(`AB"CD`).webhookSecret).toBe('AB"CD')
+  })
+  it('vacío, solo espacios o solo comillas: se trata como no configurado', () => {
+    for (const v of [undefined, '', '   ', '\n', '""', "''", ' " " ']) expect(() => sec(v), JSON.stringify(v)).toThrow(/no está configurado/)
+  })
+  it('espacios o caracteres de control INTERNOS: error de configuración, no se «arregla» y el mensaje no muestra el valor', () => {
+    for (const v of ['ab cd', 'ab\ncd', 'ab\tcd', 'ab\u0000cd', 'ab cd']) {
+      let msg = ''
+      try { sec(v) } catch (e) { msg = (e as Error).message }
+      expect(msg, JSON.stringify(v)).toMatch(/MP_WEBHOOK_SECRET contiene espacios/); expect(msg).not.toContain('ab')
+    }
+  })
+  it('un secreto válido con caracteres internos habituales (guiones, guiones bajos, hex) no cambia', () => {
+    for (const v of ['a1b2c3d4e5f6-A_B.c', 'f'.repeat(64)]) expect(sec(v).webhookSecret).toBe(v)
+  })
+  it('las reglas de entorno existentes no cambian con la normalización', () => {
+    expect(() => getMpConfig(env({ VERCEL_ENV: 'production', MP_WEBHOOK_SECRET: ` ${WHSEC}\n` }))).toThrow(/Producción requiere/)
+  })
+})
