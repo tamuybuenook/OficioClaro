@@ -49,10 +49,10 @@ describe('payment (id numérico): igual que el SDK', () => {
 })
 
 describe('merchant_order', () => {
-  it('IPN clásico (?id=…&topic=merchant_order) con firma calculada sin id (manifest SDK con id omitido): hoy 401 falta_data_id [DIVERGENCIA]', async () => {
+  it('IPN clásico (?id=…&topic=merchant_order) con firma calculada sin id (manifest SDK con id omitido): 200 «ignored», sin procesar nada', async () => {
     const res = await call('id=45481702722&topic=merchant_order', { 'x-signature': header(undefined), 'x-request-id': RID }, {})
-    expect(res.status).toBe(401) // el SDK aceptaría; el resultado de negocio sería «ignorado» (processMpEvent no maneja merchant_order)
-    expect(processMock).not.toHaveBeenCalled()
+    expect(res.status).toBe(200); expect(await res.json()).toEqual({ ok: true, outcome: 'ignored' })
+    expect(processMock).not.toHaveBeenCalled() // nunca llega a processMpEvent: ni consulta a MP ni cambios en suscripciones
   })
   it('el `id` de la query IPN NO es data.id: una firma calculada con ese id se rechaza', async () => {
     expect((await call('id=45481702722&topic=merchant_order', { 'x-signature': header('45481702722'), 'x-request-id': RID }, {})).status).toBe(401)

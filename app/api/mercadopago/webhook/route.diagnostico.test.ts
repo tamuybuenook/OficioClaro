@@ -33,14 +33,14 @@ const send = async (qs: string, headers: Record<string, string>, body: unknown =
 const noLeak = (all: string, ...vals: string[]) => { for (const v of [RID, SECRET, 'APP_USR', V1('x').slice(0, 20), `ts=${TS}`, ...vals]) expect(all, v).not.toContain(v) }
 
 describe('merchant_order en formato IPN (sin data.id)', () => {
-  it('con x-signature y x-request-id presentes: 401 falta_data_id, motivo ipn_sin_data_id; el id de la orden no se usa ni se registra', async () => {
+  it('firma calculada CON el id de la orden (no es data.id): el manifest real es sin id, así que no coincide → 401 firma_no_coincide; el id de la orden no se usa ni se registra', async () => {
     const { res, entrada, firma, all, t } = await send('id=45481702722&topic=merchant_order', { 'x-signature': `ts=${TS},v1=${V1('45481702722')}`, 'x-request-id': RID })
     expect(res.status).toBe(401); expect(processMock).not.toHaveBeenCalled()
     expect(entrada).toMatchObject({ metodo: 'POST', formato: 'ipn', topic: 'merchant_order', topic_query: 'merchant_order', type_query: null,
       presentes: { x_signature: true, x_request_id: true, data_id_query: false, data_id_cuerpo: false, id_query_ipn: true },
       ids: { ambos_presentes: false, coinciden: null, fuente_usada_para_firmar: 'ninguna' } })
-    expect(firma).toMatchObject({ resultado: 'rechazada', categoria: 'falta_data_id', motivo: 'ipn_sin_data_id',
-      manifest: { id: { presente: false, origen: 'query', forma: null }, request_id: { presente: true }, ts: { presente: true } } })
+    expect(firma).toMatchObject({ resultado: 'rechazada', categoria: 'firma_no_coincide', motivo: 'hmac_distinto_manifest_sin_id',
+      manifest: { plantilla: 'request-id:<x-request-id>;ts:<ts de x-signature>;', id: { presente: false, origen: 'query', forma: null }, request_id: { presente: true }, ts: { presente: true } } })
     expect(t.map((l) => l.etapa)).toEqual(['entrada', 'firma', 'salida'])
     noLeak(all, '45481702722')
   })

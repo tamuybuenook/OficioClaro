@@ -1,11 +1,25 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
 // Validación oficial de webhooks de MP: header x-signature "ts=...,v1=..." y x-request-id.
-// manifest = `id:<data.id>;request-id:<x-request-id>;ts:<ts>;` firmado con HMAC-SHA256 (hex).
-// Si data.id es alfanumérico, MP lo firma en minúsculas.
-export function verifyMpSignature(opts: { secret: string; signatureHeader: string | null; requestId: string | null; dataId: string | null }): boolean {
-  const { secret, signatureHeader, requestId, dataId } = opts
-  if (!secret || !signatureHeader || !requestId || !dataId) return false
+// Manifest (SDK oficial mercadopago/sdk-nodejs, src/utils/webhook): `id:<data.id>;request-id:<x-request-id>;ts:<ts>;` firmado con HMAC-SHA256 (hex).
+// Regla documentada del SDK: el par cuyo valor falta se OMITE (p. ej. sin data.id el manifest es `request-id:<…>;ts:<…>;`).
+// Si data.id es alfanumérico, MP lo firma en minúsculas (el SDK lo conserva tal cual: divergencia conocida y sin cambios; no afecta ids numéricos ni hex en minúscula).
+// Mantenido a propósito MÁS estricto que el SDK: x-request-id sigue siendo obligatorio, y data.id lo sigue siendo salvo que el llamador lo autorice
+// explícitamente (`allowMissingDataId`, hoy solo la ruta del webhook para merchant_order). El id de IPN o del cuerpo NUNCA sustituyen a data.id de la query.
+
+/** Construcción del manifest idéntica a la del SDK oficial (buildManifest): pares ausentes omitidos, `;` final. `id` ya viene normalizado por el llamador. */
+export function buildMpManifest(id: string | null | undefined, requestId: string | null | undefined, ts: string): string {
+  const parts: string[] = []
+  if (id) parts.push(`id:${id}`)
+  if (requestId) parts.push(`request-id:${requestId}`)
+  parts.push(`ts:${ts}`)
+  return parts.join(';') + ';'
+}
+
+export function verifyMpSignature(opts: { secret: string; signatureHeader: string | null; requestId: string | null; dataId: string | null; allowMissingDataId?: boolean }): boolean {
+  const { secret, signatureHeader, requestId, dataId, allowMissingDataId } = opts
+  if (!secret || !signatureHeader || !requestId) return false
+  if (!dataId && !allowMissingDataId) return false
   let ts: string | undefined
   let v1: string | undefined
   for (const part of signatureHeader.split(',')) {
@@ -14,8 +28,8 @@ export function verifyMpSignature(opts: { secret: string; signatureHeader: strin
     else if (k === 'v1') v1 = v
   }
   if (!ts || !v1 || !/^[0-9a-f]{64}$/i.test(v1)) return false
-  const id = /^[a-z0-9]+$/i.test(dataId) ? dataId.toLowerCase() : dataId
-  const expected = createHmac('sha256', secret).update(`id:${id};request-id:${requestId};ts:${ts};`).digest()
+  const id = dataId && /^[a-z0-9]+$/i.test(dataId) ? dataId.toLowerCase() : dataId
+  const expected = createHmac('sha256', secret).update(buildMpManifest(id, requestId, ts)).digest()
   return timingSafeEqual(expected, Buffer.from(v1, 'hex'))
 }
 
@@ -32,13 +46,13 @@ export type SignatureRejection = {
  * Devuelve únicamente categorías y datos no sensibles: nunca el secreto, la firma, los encabezados ni los identificadores.
  */
 export function describeSignatureRejection(
-  opts: { secret: string; signatureHeader: string | null; requestId: string | null; dataId: string | null },
+  opts: { secret: string; signatureHeader: string | null; requestId: string | null; dataId: string | null; allowMissingDataId?: boolean },
   now: () => number = Date.now,
 ): SignatureRejection {
-  const { secret, signatureHeader, requestId, dataId } = opts
+  const { secret, signatureHeader, requestId, dataId, allowMissingDataId } = opts
   if (!signatureHeader) return { categoria: 'falta_x_signature' }
   if (!requestId) return { categoria: 'falta_x_request_id' }
-  if (!dataId) return { categoria: 'falta_data_id' }
+  if (!dataId && !allowMissingDataId) return { categoria: 'falta_data_id' }
   let ts: string | undefined
   let v1: string | undefined
   for (const part of signatureHeader.split(',')) {
@@ -96,8 +110,8 @@ export function describeSignatureStructure(header: string | null): SignatureStru
 }
 
 export type ManifestInputs = {
-  /** Plantilla EXACTA que arma verifyMpSignature (los valores nunca se registran). */
-  plantilla: 'id:<data.id de la query>;request-id:<x-request-id>;ts:<ts de x-signature>;'
+  /** Plantilla EXACTA que arma verifyMpSignature (los valores nunca se registran). Sin data.id el par `id:` se omite, como en el SDK. */
+  plantilla: 'id:<data.id de la query>;request-id:<x-request-id>;ts:<ts de x-signature>;' | 'request-id:<x-request-id>;ts:<ts de x-signature>;'
   id: { presente: boolean; origen: 'query'; forma: 'numerico' | 'alfanumerico' | 'otro' | null; largo: number | null; minusculas_cambia_valor: boolean }
   request_id: { presente: boolean; origen: 'cabecera x-request-id'; largo: number | null }
   ts: { presente: boolean; origen: 'cabecera x-signature (ts)' }
@@ -108,7 +122,7 @@ export function describeManifestInputs(opts: { signatureHeader: string | null; r
   const { signatureHeader, requestId, dataId } = opts
   const s = describeSignatureStructure(signatureHeader)
   return {
-    plantilla: 'id:<data.id de la query>;request-id:<x-request-id>;ts:<ts de x-signature>;',
+    plantilla: dataId ? 'id:<data.id de la query>;request-id:<x-request-id>;ts:<ts de x-signature>;' : 'request-id:<x-request-id>;ts:<ts de x-signature>;',
     id: {
       presente: !!dataId, origen: 'query',
       forma: !dataId ? null : /^\d+$/.test(dataId) ? 'numerico' : /^[a-z0-9]+$/i.test(dataId) ? 'alfanumerico' : 'otro',

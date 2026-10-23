@@ -58,7 +58,7 @@ function tracedClient(mp: MpClient, trace: Trace): MpClient {
   return { request }
 }
 
-// Webhook de Mercado Pago. Respuestas: 401 firma inválida · 400 id de evento contradictorio · 200 procesada/ignorada/rechazada por negocio · 500 error transitorio (MP reintenta).
+// Webhook de Mercado Pago. Respuestas: 401 firma inválida (o falta data.id fuera de merchant_order) · 400 id de evento contradictorio · 200 procesada/ignorada/rechazada por negocio · 500 error transitorio (MP reintenta).
 export async function POST(request: NextRequest) {
   const t0 = Date.now()
   const seguimiento = randomBytes(4).toString('hex')
@@ -103,8 +103,12 @@ export async function POST(request: NextRequest) {
     return salida(500, { error: 'not_configured' })
   }
 
-  // La firma se calcula SOLO con el data.id de la query, como indica el manifest de Mercado Pago. El id del cuerpo nunca entra al cálculo.
-  const sigInput = { secret: config.webhookSecret, signatureHeader, requestId, dataId }
+  // La firma se calcula SOLO con el data.id de la query, como indica el manifest de Mercado Pago. El id del cuerpo ni el `id` del IPN entran nunca al cálculo.
+  // Única excepción (prueba diagnóstica): un aviso `merchant_order` SIN data.id en la query NI en el cuerpo se valida con el manifest del SDK oficial
+  // (par `id:` omitido). Si la firma es válida solo se registra como «ignored»: no se consulta a MP, no se procesa nada, no se toca ninguna suscripción.
+  // Cualquier otro tópico sin data.id (payment, subscription_*…) sigue rechazándose como antes.
+  const sinIdPermitido = !dataId && body.dataId === null && !body.dataIdInvalido && topic === 'merchant_order'
+  const sigInput = { secret: config.webhookSecret, signatureHeader, requestId, dataId, allowMissingDataId: sinIdPermitido }
   const manifest = describeManifestInputs({ signatureHeader, requestId, dataId })
   const entorno = { mp_env: config.env, vercel_env: process.env.VERCEL_ENV ?? null, secreto_normalizado: config.webhookSecretNormalizado === true }
   if (!verifyMpSignature(sigInput)) {
@@ -113,7 +117,7 @@ export async function POST(request: NextRequest) {
     const motivo =
       r.categoria === 'falta_data_id' ? (formato === 'ipn' ? 'ipn_sin_data_id' : body.dataId ? 'id_solo_en_cuerpo' : 'sin_id_en_query_ni_cuerpo')
       : r.categoria === 'formato_invalido' ? `ts_${describeSignatureStructure(signatureHeader).ts}_v1_${describeSignatureStructure(signatureHeader).v1}`
-      : r.categoria === 'firma_no_coincide' ? 'hmac_distinto'
+      : r.categoria === 'firma_no_coincide' ? (sinIdPermitido ? 'hmac_distinto_manifest_sin_id' : 'hmac_distinto')
       : r.categoria
     trace('firma', {
       resultado: 'rechazada', ...r, motivo, manifest, ...entorno,
@@ -122,6 +126,20 @@ export async function POST(request: NextRequest) {
     return salida(401, { error: 'invalid_signature' })
   }
   trace('firma', { resultado: 'aceptada', manifest, ...entorno })
+
+  if (sinIdPermitido) {
+    trace('evento', { topic, resultado: 'ignorado_merchant_order_sin_data_id', manifest_sin_id: true })
+    let store: MpStore
+    try { store = createSupabaseMpStore(createAdminClient()) } catch {
+      trace('persistencia', { operacion: 'crear_cliente', resultado: 'error' }, 'error')
+      return salida(500, { error: 'retry' })
+    }
+    const eventId = await store.logEvent({ topic, dataId: null, requestId })
+    trace('persistencia', { operacion: 'logEvent', resultado: eventId ? 'registrado' : 'no_registrado' }, eventId ? 'info' : 'error')
+    await store.finishEvent(eventId, 'ignored', 'merchant_order sin data.id: firma válida (manifest sin id), sin efecto')
+    trace('procesamiento', { resultado: 'ignored', motivo: 'merchant_order_sin_data_id' })
+    return salida(200, { ok: true, outcome: 'ignored' })
+  }
 
   // Firma válida pero el cuerpo nombra otro recurso que la query: ambiguo, no se procesa nada.
   if (body.dataIdInvalido || (body.dataId !== null && body.dataId !== dataId)) {
