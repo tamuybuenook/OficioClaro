@@ -69,7 +69,7 @@ describe('diagnóstico seguro de firmas rechazadas', () => {
     const V1 = 'b'.repeat(64)
     const { out } = await run('data.id=987654321&type=payment', { 'x-signature': `ts=1,v1=${V1}`, 'x-request-id': 'req-secreto-id' })
     expect(out).toContain('"secreto_espacios_borde":false'); expect(out).toMatch(/"ts_edad_s":\d+/)
-    for (const bad of [SECRET, V1, 'req-secreto-id', '987654321', 'x-signature']) expect(out).not.toContain(bad)
+    for (const bad of [SECRET, V1, 'req-secreto-id', '987654321', `ts=1,v1=`]) expect(out).not.toContain(bad)
   })
   it('secreto con salto de línea o espacio al borde: se normaliza, la firma válida se acepta y el registro solo informa «normalizado»', async () => {
     process.env.MP_WEBHOOK_SECRET = ' "sec"\n'
@@ -134,7 +134,7 @@ describe('data.id: query, cuerpo y ambigüedad', () => {
     const res = await POST(reqBody('type=payment', { data: { id: '555123' } }, H('555123')))
     expect(res.status).toBe(401); expect(processMock).not.toHaveBeenCalled()
     const out = err.mock.calls.map((c) => c.join(' ')).join('\n')
-    expect(out).toContain('"categoria":"falta_data_id"'); expect(out).toContain('"id_solo_en_cuerpo":true'); expect(out).not.toContain('555123')
+    expect(out).toContain('"categoria":"falta_data_id"'); expect(out).toContain('"motivo":"id_solo_en_cuerpo"'); expect(out).not.toContain('555123')
   })
   it('sin id en ningún lado: 401 y nada se procesa', async () => {
     quiet(); expect((await POST(reqBody('type=payment', {}, H('1')))).status).toBe(401); expect(processMock).not.toHaveBeenCalled()

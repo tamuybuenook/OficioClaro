@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { NextResponse, type NextRequest } from 'next/server'
 import { getMpConfig } from '@/lib/mercadopago/config'
-import { describeSignatureRejection, verifyMpSignature } from '@/lib/mercadopago/signature'
+import { describeManifestInputs, describeSignatureRejection, describeSignatureStructure, verifyMpSignature } from '@/lib/mercadopago/signature'
 import { createMpClient, MpApiError, type MpClient } from '@/lib/mercadopago/client'
 import { createSupabaseMpStore, type MpStore } from '@/lib/mercadopago/store'
 import { processMpEvent } from '@/lib/mercadopago/process-event'
@@ -22,16 +22,24 @@ const SAFE_TOPIC = /^[a-z_]{1,40}$/
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/
 const safeTopic = (v: unknown) => (typeof v === 'string' && SAFE_TOPIC.test(v) ? v : null)
 
-/** Cuerpo JSON de la notificación (acotado). Solo se extraen `type` y `data.id` con formato seguro; el resto se descarta. */
-async function readBody(request: NextRequest): Promise<{ type: string | null; dataId: string | null; dataIdInvalido: boolean }> {
+type Body = { type: string | null; action: string | null; liveMode: boolean | null; dataId: string | null; dataIdInvalido: boolean; json: boolean }
+const NO_BODY: Body = { type: null, action: null, liveMode: null, dataId: null, dataIdInvalido: false, json: false }
+
+/** Cuerpo JSON de la notificación (acotado). Solo se extraen `type`, `action`, `live_mode` y `data.id` con formato seguro; el resto se descarta. */
+async function readBody(request: NextRequest): Promise<Body> {
   try {
     const text = (await request.text()).slice(0, 20_000)
-    const j = JSON.parse(text) as { type?: unknown; data?: { id?: unknown } }
+    const j = JSON.parse(text) as { type?: unknown; action?: unknown; live_mode?: unknown; data?: { id?: unknown } }
     const rawId = j?.data?.id
     const id = typeof rawId === 'string' || typeof rawId === 'number' ? String(rawId) : null
-    return { type: safeTopic(j?.type), dataId: id && SAFE_ID.test(id) ? id : null, dataIdInvalido: id !== null && !SAFE_ID.test(id) }
-  } catch { return { type: null, dataId: null, dataIdInvalido: false } }
+    return {
+      type: safeTopic(j?.type), action: typeof j?.action === 'string' && /^[a-z_.]{1,60}$/.test(j.action) ? j.action : null,
+      liveMode: typeof j?.live_mode === 'boolean' ? j.live_mode : null,
+      dataId: id && SAFE_ID.test(id) ? id : null, dataIdInvalido: id !== null && !SAFE_ID.test(id), json: true,
+    }
+  } catch { return NO_BODY }
 }
+const forma = (id: string | null) => (!id ? null : /^\d+$/.test(id) ? 'numerico' : /^[a-z0-9]+$/i.test(id) ? 'alfanumerico' : 'otro')
 
 // Envoltorio del cliente de MP solo para trazar: no cambia la consulta autenticada ni sus errores. El id nunca se registra (se enmascara en la ruta).
 function tracedClient(mp: MpClient, trace: Trace): MpClient {
@@ -67,10 +75,26 @@ export async function POST(request: NextRequest) {
   const body = await readBody(request)
   // `ipn` = aviso viejo (?id=…&topic=…, sin data.id; MP documenta que no se puede validar con la clave secreta).
   const formato = !dataId && url.searchParams.has('id') && url.searchParams.has('topic') ? 'ipn' : 'webhook'
-  const topic = safeTopic(url.searchParams.get('type')) ?? safeTopic(url.searchParams.get('topic')) ?? body.type
+  const typeQuery = safeTopic(url.searchParams.get('type'))
+  const topicQuery = safeTopic(url.searchParams.get('topic'))
+  const topic = typeQuery ?? topicQuery ?? body.type
+  const bothIds = !!dataId && body.dataId !== null
   trace('entrada', {
-    metodo: request.method, topic, formato,
-    presentes: { x_signature: !!signatureHeader, x_request_id: !!requestId, data_id_query: !!dataId, data_id_cuerpo: body.dataId !== null },
+    metodo: request.method, formato, topic,
+    type_query: typeQuery, topic_query: topicQuery, type_cuerpo: body.type, action_cuerpo: body.action, live_mode_cuerpo: body.liveMode,
+    cuerpo_json: body.json,
+    presentes: {
+      x_signature: !!signatureHeader, x_request_id: !!requestId, data_id_query: !!dataId, data_id_cuerpo: body.dataId !== null,
+      id_query_ipn: url.searchParams.has('id'), // aviso viejo (?id=…&topic=…): NO es data.id y no se usa en el manifest
+    },
+    ids: {
+      query_forma: forma(dataId), cuerpo_forma: forma(body.dataId), cuerpo_formato_invalido: body.dataIdInvalido,
+      ambos_presentes: bothIds, coinciden: bothIds ? body.dataId === dataId : null,
+      fuente_usada_para_firmar: dataId ? 'query' : 'ninguna', // el código solo firma con la query; el cuerpo nunca entra al cálculo
+      fuente_usada_para_procesar: dataId ? 'query' : 'ninguna',
+    },
+    x_signature_estructura: describeSignatureStructure(signatureHeader),
+    x_request_id_largo: requestId ? requestId.length : null,
   })
 
   let config
@@ -81,15 +105,23 @@ export async function POST(request: NextRequest) {
 
   // La firma se calcula SOLO con el data.id de la query, como indica el manifest de Mercado Pago. El id del cuerpo nunca entra al cálculo.
   const sigInput = { secret: config.webhookSecret, signatureHeader, requestId, dataId }
+  const manifest = describeManifestInputs({ signatureHeader, requestId, dataId })
+  const entorno = { mp_env: config.env, vercel_env: process.env.VERCEL_ENV ?? null, secreto_normalizado: config.webhookSecretNormalizado === true }
   if (!verifyMpSignature(sigInput)) {
+    const r = describeSignatureRejection(sigInput)
+    // `motivo`: causa técnica concreta dentro de la categoría. Solo describe; no cambia ninguna decisión.
+    const motivo =
+      r.categoria === 'falta_data_id' ? (formato === 'ipn' ? 'ipn_sin_data_id' : body.dataId ? 'id_solo_en_cuerpo' : 'sin_id_en_query_ni_cuerpo')
+      : r.categoria === 'formato_invalido' ? `ts_${describeSignatureStructure(signatureHeader).ts}_v1_${describeSignatureStructure(signatureHeader).v1}`
+      : r.categoria === 'firma_no_coincide' ? 'hmac_distinto'
+      : r.categoria
     trace('firma', {
-      resultado: 'rechazada', ...describeSignatureRejection(sigInput),
-      secreto_normalizado: config.webhookSecretNormalizado === true,
-      ...(!dataId && body.dataId ? { id_solo_en_cuerpo: true } : {}),
+      resultado: 'rechazada', ...r, motivo, manifest, ...entorno,
+      ...(r.categoria === 'firma_no_coincide' ? { pistas: { ids_contradictorios: bothIds && body.dataId !== dataId, live_mode_cuerpo: body.liveMode } } : {}),
     }, 'error')
     return salida(401, { error: 'invalid_signature' })
   }
-  trace('firma', { resultado: 'aceptada', secreto_normalizado: config.webhookSecretNormalizado === true })
+  trace('firma', { resultado: 'aceptada', manifest, ...entorno })
 
   // Firma válida pero el cuerpo nombra otro recurso que la query: ambiguo, no se procesa nada.
   if (body.dataIdInvalido || (body.dataId !== null && body.dataId !== dataId)) {

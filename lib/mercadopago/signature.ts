@@ -55,3 +55,67 @@ export function describeSignatureRejection(
   }
   return { categoria: 'firma_no_coincide', secreto_espacios_borde: secret !== secret.trim(), ts_edad_s: edad }
 }
+
+// ───────── SOLO DIAGNÓSTICO (no participan en la validación ni la modifican) ─────────
+// Todo lo devuelto es presencia, forma y longitudes: nunca ts, v1, request-id ni identificadores.
+
+export type SignatureStructure = {
+  presente: boolean
+  partes: number
+  partes_desconocidas: number
+  ts: 'ok' | 'falta' | 'vacio'
+  ts_forma: 'segundos' | 'milisegundos' | 'otro' | null
+  ts_digitos: number | null
+  v1: 'ok_hex64' | 'falta' | 'vacio' | 'no_hex64'
+  v1_largo: number | null
+}
+
+/** Estructura reconocida de x-signature con el MISMO criterio de lectura que verifyMpSignature (partes `k=v` separadas por coma). */
+export function describeSignatureStructure(header: string | null): SignatureStructure {
+  if (!header) return { presente: false, partes: 0, partes_desconocidas: 0, ts: 'falta', ts_forma: null, ts_digitos: null, v1: 'falta', v1_largo: null }
+  let ts: string | undefined
+  let v1: string | undefined
+  let partes = 0
+  let desconocidas = 0
+  for (const part of header.split(',')) {
+    partes++
+    const [k, v] = part.split('=', 2).map((x) => x?.trim())
+    if (k === 'ts') ts = v ?? ''
+    else if (k === 'v1') v1 = v ?? ''
+    else desconocidas++
+  }
+  const tsDigitos = ts && /^\d+$/.test(ts) ? ts.length : null
+  return {
+    presente: true, partes, partes_desconocidas: desconocidas,
+    ts: ts === undefined ? 'falta' : ts === '' ? 'vacio' : 'ok',
+    ts_forma: tsDigitos === null ? (ts ? 'otro' : null) : tsDigitos >= 13 ? 'milisegundos' : tsDigitos >= 9 ? 'segundos' : 'otro',
+    ts_digitos: tsDigitos,
+    v1: v1 === undefined ? 'falta' : v1 === '' ? 'vacio' : /^[0-9a-f]{64}$/i.test(v1) ? 'ok_hex64' : 'no_hex64',
+    v1_largo: v1 === undefined ? null : v1.length,
+  }
+}
+
+export type ManifestInputs = {
+  /** Plantilla EXACTA que arma verifyMpSignature (los valores nunca se registran). */
+  plantilla: 'id:<data.id de la query>;request-id:<x-request-id>;ts:<ts de x-signature>;'
+  id: { presente: boolean; origen: 'query'; forma: 'numerico' | 'alfanumerico' | 'otro' | null; largo: number | null; minusculas_cambia_valor: boolean }
+  request_id: { presente: boolean; origen: 'cabecera x-request-id'; largo: number | null }
+  ts: { presente: boolean; origen: 'cabecera x-signature (ts)' }
+}
+
+/** Qué datos componen el manifest hoy, de dónde sale cada uno y si está presente. */
+export function describeManifestInputs(opts: { signatureHeader: string | null; requestId: string | null; dataId: string | null }): ManifestInputs {
+  const { signatureHeader, requestId, dataId } = opts
+  const s = describeSignatureStructure(signatureHeader)
+  return {
+    plantilla: 'id:<data.id de la query>;request-id:<x-request-id>;ts:<ts de x-signature>;',
+    id: {
+      presente: !!dataId, origen: 'query',
+      forma: !dataId ? null : /^\d+$/.test(dataId) ? 'numerico' : /^[a-z0-9]+$/i.test(dataId) ? 'alfanumerico' : 'otro',
+      largo: dataId ? dataId.length : null,
+      minusculas_cambia_valor: !!dataId && /^[a-z0-9]+$/i.test(dataId) && dataId !== dataId.toLowerCase(),
+    },
+    request_id: { presente: !!requestId, origen: 'cabecera x-request-id', largo: requestId ? requestId.length : null },
+    ts: { presente: s.ts === 'ok', origen: 'cabecera x-signature (ts)' },
+  }
+}
