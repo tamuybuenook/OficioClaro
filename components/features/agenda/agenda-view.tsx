@@ -35,11 +35,12 @@ const primaryBtn = 'min-h-11 rounded-xl bg-[var(--oc-coral)] px-4 py-2.5 text-sm
 const ghostBtn = 'min-h-11 rounded-xl border border-[var(--oc-border)] bg-[var(--oc-surface)] px-4 py-2.5 text-sm font-bold text-[var(--oc-brand)] disabled:opacity-60'
 
 export function AgendaView({
-  intent, onIntentHandled, onOpenClient,
+  intent, onIntentHandled, onOpenClient, onQuote,
 }: {
   intent: AgendaIntent | null
   onIntentHandled: () => void
   onOpenClient: (customerId: string) => void
+  onQuote?: (c: { jobId: string | null; customerId: string | null; quoteId?: string | null }) => void
 }) {
   const [today] = useState(() => todayISO()) // hora local del dispositivo (no la del servidor)
   const [mode, setMode] = useState<'agenda' | 'week'>('agenda')
@@ -162,8 +163,12 @@ export function AgendaView({
   function openNew(date?: string) {
     setForm({ initial: date ? { job_date: date, status: 'scheduled' } : {}, quoteLabel: null })
   }
-  function onSaved(job: AgendaJob, info: { duplicate: boolean; created: boolean }) {
+  function onSaved(job: AgendaJob, info: { duplicate: boolean; created: boolean; quote?: boolean }) {
     setForm(null)
+    if (info.quote && onQuote) { // "Guardar y armar presupuesto": el trabajo ya quedó guardado; se abre el presupuesto con su cliente
+      onQuote({ jobId: job.id, customerId: job.customer_id })
+      return
+    }
     setNotice({
       tone: 'ok',
       text: info.duplicate ? 'Este presupuesto ya tenía un trabajo agendado: te mostramos ese, no se creó otro.' : info.created ? 'Trabajo guardado en la agenda.' : 'Cambios guardados.',
@@ -190,6 +195,7 @@ export function AgendaView({
         defaultDate={mode === 'week' ? selectedDay : anchor < today ? today : anchor}
         onSaved={onSaved}
         onCancel={() => setForm(null)}
+        onQuote={onQuote ? (c) => onQuote(c) : undefined}
       />
     )
   }

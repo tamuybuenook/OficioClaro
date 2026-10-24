@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getMyEnabledTradeIds } from '@/lib/services/userTrades'
-import { getServicePricing } from '@/lib/services/pricing'
+import { getPricingBatch } from '@/lib/services/pricingBatch'
 import { getMasterUtCurrent } from '@/lib/services/masterUt'
 import type { Job } from '@/components/types'
 
@@ -62,8 +62,11 @@ export async function fetchCategoryPage(tradeId: string, categoryId: string, q: 
   const { data: services, count, error } = await b
   if (error) throw error
 
-  const masterUtValue = await getMasterUtCurrent()
-  const rows = await Promise.all((services ?? []).map(async (s) => ({ s, pricing: await getServicePricing(s.id, user.id) })))
+  const [masterUtValue, pricingMap] = await Promise.all([
+    getMasterUtCurrent(),
+    getPricingBatch(supabase, user.id, (services ?? []).map((s) => s.id)),
+  ])
+  const rows = (services ?? []).map((s) => ({ s, pricing: pricingMap.get(s.id) ?? null }))
   const jobs: Job[] = rows.filter((r) => r.pricing).map(({ s, pricing }) => ({
     id: s.id,
     name: s.name,

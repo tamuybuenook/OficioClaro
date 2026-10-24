@@ -4,6 +4,7 @@ import { GoogleButton } from '@/components/auth/google-button'
 import { PasswordField } from '@/components/auth/password-field'
 import { SubmitButton } from '@/components/auth/submit-button'
 import { AuthShell } from '@/components/auth/auth-shell'
+import { PurgeLocalCache } from '@/components/local-cache-session'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 
@@ -15,6 +16,8 @@ export default async function RegisterPage() {
   if (user) redirect('/')
 
   return (
+    <>
+      <PurgeLocalCache keepDrafts />
     <AuthShell
       title="Creá tu cuenta"
       subtitle={<><strong className="text-[var(--lp-salvia)]">30 días gratis · sin tarjeta.</strong> Consultá precios de referencia y armá tus presupuestos.</>}
@@ -38,5 +41,6 @@ export default async function RegisterPage() {
 
       <p className="mt-7 text-center text-[17px] text-[var(--lp-ink-soft)]">¿Ya tenés cuenta? <a href="/login" className="font-bold text-[var(--lp-brand)] underline underline-offset-4">Ingresá</a></p>
     </AuthShell>
+    </>
   )
 }

@@ -3,6 +3,8 @@
 import { useRef, useState, useTransition } from 'react'
 import { ArrowLeft, MapPin } from 'lucide-react'
 import { createAgendaJob, updateAgendaJob } from '@/lib/actions/agenda'
+import { fetchLinkableQuotes, linkQuoteToJob, type LinkableQuote } from '@/lib/actions/quoteBuilder'
+import { QUOTE_STATUS_LABEL, quoteNumberLabel } from '@/lib/quotes'
 import {
   DURATION_PRESETS, JOB_STATUSES, MAX_ADDRESS, MAX_DESCRIPTION, MAX_NOTES, STATUS_LABEL, STATUSES_NEED_DATE,
   formatDuration, trimTime, validateJobInput, type AgendaJob, type JobInput, type JobStatus,
@@ -17,15 +19,17 @@ const field =
 const label = 'flex min-w-0 flex-col gap-1.5 text-sm font-semibold text-[var(--oc-muted)]'
 
 export function AgendaJobForm({
-  initial, customers, quoteLabel, defaultDate, onSaved, onCancel,
+  initial, customers, quoteLabel, defaultDate, onSaved, onCancel, onQuote,
 }: {
   initial: JobFormInitial
   customers: AgendaCustomer[]
   /** Si el trabajo viene de un presupuesto (nuevo o existente): "Presupuesto Nº 00012". */
   quoteLabel?: string | null
   defaultDate: string | null
-  onSaved: (job: AgendaJob, info: { duplicate: boolean; created: boolean }) => void
+  onSaved: (job: AgendaJob, info: { duplicate: boolean; created: boolean; quote?: boolean }) => void
   onCancel: () => void
+  /** Abre el formulario de presupuesto para este trabajo (o el ya vinculado). */
+  onQuote?: (c: { jobId: string; customerId: string | null; quoteId?: string | null }) => void
 }) {
   const editing = !!initial.id
   const lockedToQuote = !!initial.quote_id // cliente y presupuesto no se cambian
@@ -66,6 +70,11 @@ export function AgendaJobForm({
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
+    save(false)
+  }
+
+  /** Guarda el trabajo. Con `thenQuote`, al terminar abre el presupuesto de este trabajo (sin volver a elegir cliente). */
+  function save(thenQuote: boolean) {
     if (submitting.current) return
     const input = buildInput()
     const invalid = validateJobInput({ ...input, description: input.description.trim() })
@@ -76,9 +85,38 @@ export function AgendaJobForm({
       try {
         const res = editing ? await updateAgendaJob(initial.id!, input) : await createAgendaJob(input)
         if (res.error || !res.data) { setError(res.error ?? 'No se pudo guardar el trabajo.'); return }
-        onSaved(res.data, { duplicate: 'duplicate' in res && !!res.duplicate, created: !editing })
+        onSaved(res.data, { duplicate: 'duplicate' in res && !!res.duplicate, created: !editing, quote: thenQuote })
       } catch {
         setError('No se pudo guardar. Revisá tu conexión e intentá de nuevo. El trabajo no se guardó.')
+      } finally {
+        submitting.current = false
+      }
+    })
+  }
+
+  // ---- vincular un presupuesto que ya existe (se guardan antes los cambios del formulario)
+  const [linking, setLinking] = useState<{ items: LinkableQuote[] | null; error: string | null } | null>(null)
+  async function openLinker() {
+    setLinking({ items: null, error: null })
+    const r = await fetchLinkableQuotes(customerId || null).catch(() => ({ error: 'No se pudieron cargar tus presupuestos. Revisá tu conexión.' }))
+    setLinking('error' in r ? { items: null, error: r.error } : { items: r.data, error: null })
+  }
+  function linkExisting(quoteId: string) {
+    if (submitting.current || !initial.id) return
+    const input = buildInput()
+    const invalid = validateJobInput({ ...input, description: input.description.trim() })
+    if (invalid) { setError(invalid); return }
+    setError(null)
+    submitting.current = true
+    startTransition(async () => {
+      try {
+        const saved = await updateAgendaJob(initial.id!, input)
+        if (saved.error || !saved.data) { setError(saved.error ?? 'No se pudo guardar el trabajo.'); return }
+        const linked = await linkQuoteToJob(initial.id!, quoteId)
+        if ('error' in linked) { setError(linked.error); return }
+        onSaved({ ...saved.data, quote_id: quoteId }, { duplicate: false, created: false })
+      } catch {
+        setError('No se pudo vincular. Revisá tu conexión e intentá de nuevo.')
       } finally {
         submitting.current = false
       }
@@ -148,6 +186,43 @@ export function AgendaJobForm({
           </select>
           {needsDate && <span role="status" className="text-xs font-normal text-[var(--oc-coral)]">Para este estado hace falta una fecha. Si todavía no la coordinaste, elegí “{STATUS_LABEL.pending}”.</span>}
         </label>
+
+        {onQuote && (
+          <section aria-labelledby="job-quote" className="grid gap-3 rounded-xl border border-[var(--oc-border)] bg-[var(--oc-page)] p-3">
+            <h2 id="job-quote" className="text-sm font-bold text-[var(--oc-ink)]">Presupuesto</h2>
+            {initial.quote_id ? (
+              <>
+                <p className="text-sm text-[var(--oc-muted)]">Este trabajo está vinculado a un presupuesto.</p>
+                {editing && <button type="button" onClick={() => onQuote({ jobId: initial.id!, customerId: customerId || null, quoteId: initial.quote_id })} className="min-h-11 self-start rounded-xl border border-[var(--oc-border)] px-4 text-sm font-bold text-[var(--oc-brand)]">Ver presupuesto</button>}
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-[var(--oc-muted)]">{customer ? `Se presupuesta para ${customer.name}: no hace falta elegir el cliente de nuevo.` : 'Si todavía no elegiste cliente, podés buscarlo o crearlo dentro del presupuesto.'}</p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <button type="button" disabled={pending} onClick={() => save(true)} className="min-h-11 rounded-xl bg-[var(--oc-coral)] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60">{editing ? 'Guardar y armar presupuesto' : 'Guardar trabajo y armar presupuesto'}</button>
+                  {editing && <button type="button" disabled={pending} onClick={() => (linking ? setLinking(null) : openLinker())} className="min-h-11 rounded-xl border border-[var(--oc-border)] px-4 py-2.5 text-sm font-bold text-[var(--oc-brand)] disabled:opacity-60">{linking ? 'Cerrar' : 'Vincular uno existente'}</button>}
+                </div>
+                {linking && (
+                  <div className="rounded-xl border border-[var(--oc-border)] bg-[var(--oc-surface)]">
+                    {linking.error && <p role="alert" className="p-3 text-sm font-semibold text-[var(--oc-coral)]">{linking.error}</p>}
+                    {!linking.items && !linking.error && <p role="status" className="p-3 text-sm text-[var(--oc-muted)]">Cargando presupuestos…</p>}
+                    {linking.items && linking.items.length === 0 && <p className="p-3 text-sm text-[var(--oc-muted)]">No hay presupuestos disponibles{customerId ? ' para este cliente' : ''}. Los que ya tienen un trabajo en la agenda no se listan.</p>}
+                    {linking.items && linking.items.length > 0 && (
+                      <ul className="max-h-60 divide-y divide-[var(--oc-border-soft)] overflow-y-auto">
+                        {linking.items.map((q) => (
+                          <li key={q.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                            <div className="min-w-0"><p className="text-sm font-bold text-[var(--oc-ink)]">Presupuesto {quoteNumberLabel(q.number)}</p><p className="truncate text-xs text-[var(--oc-muted)]">{q.customerName ?? 'Sin cliente'} · {QUOTE_STATUS_LABEL[q.status] ?? q.status} · ${Number(q.total).toLocaleString('es-AR')}</p></div>
+                            <button type="button" disabled={pending} onClick={() => linkExisting(q.id)} className="min-h-11 shrink-0 rounded-xl bg-[var(--oc-brand)] px-3 text-sm font-bold text-white disabled:opacity-60">Vincular</button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+        )}
 
         <label className={label}>
           Observaciones (opcional)

@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { createCustomer, updateCustomer, deleteCustomer } from '@/lib/actions/customers'
 import { Trash2, Pencil } from 'lucide-react'
 import { ClientDetail } from './client-detail'
+import { invalidate } from '@/lib/cache/store'
 
 type Customer = { id: string; name: string; phone: string | null; email: string | null; address: string | null }
 
@@ -21,23 +22,23 @@ function ClientForm({ defaultValues, onSubmit, pending, submitLabel }: { default
   )
 }
 
-export function ClientsUpdated({ customers, initialOpenId = null, onSchedule, onOpenJob }: { customers: Customer[]; initialOpenId?: string | null; onSchedule?: (customerId: string) => void; onOpenJob?: (jobId: string) => void }) {
+export function ClientsUpdated({ customers, initialOpenId = null, onSchedule, onQuote, onOpenJob }: { customers: Customer[]; initialOpenId?: string | null; onSchedule?: (customerId: string) => void; onQuote?: (customerId: string) => void; onOpenJob?: (jobId: string) => void }) {
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [openId, setOpenId] = useState<string | null>(initialOpenId)
   const [pending, startTransition] = useTransition()
 
   function handleCreate(formData: FormData) {
-    startTransition(() => { createCustomer(formData) })
+    startTransition(async () => { await createCustomer(formData); await invalidate('customers') })
     setShowForm(false)
   }
 
   function handleUpdate(id: string, formData: FormData) {
-    startTransition(() => { updateCustomer(id, formData) })
+    startTransition(async () => { await updateCustomer(id, formData); await invalidate('customers') })
     setEditingId(null)
   }
 
-  if (openId) return <ClientDetail customerId={openId} onBack={() => setOpenId(null)} onSchedule={onSchedule} onOpenJob={onOpenJob} />
+  if (openId) return <ClientDetail customerId={openId} onBack={() => setOpenId(null)} onSchedule={onSchedule} onQuote={onQuote} onOpenJob={onOpenJob} />
 
   return (
     <div className="mx-auto max-w-[1040px] p-5 pb-28 md:p-8">
@@ -71,12 +72,13 @@ export function ClientsUpdated({ customers, initialOpenId = null, onSchedule, on
                     <p className="truncate text-xs text-[var(--oc-muted)]">{[c.phone, c.email, c.address].filter(Boolean).join(' · ') || 'Sin datos de contacto'}</p>
                   </div>
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-2">
+                {onQuote && <button type="button" onClick={(e) => { e.stopPropagation(); onQuote(c.id) }} className="mt-3 min-h-11 w-full rounded-lg bg-[var(--oc-coral)] px-3 py-2 text-sm font-bold text-white">Presupuestar</button>}
+                <div className="mt-2 grid grid-cols-3 gap-2">
                   {c.phone ? (
                     <a href={`https://wa.me/${c.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center justify-center rounded-lg bg-[#25D366] px-2 py-2 text-xs font-bold text-white">WhatsApp</a>
                   ) : <span />}
                   <button onClick={(e) => { e.stopPropagation(); setEditingId(c.id) }} className="flex items-center justify-center gap-1 rounded-lg border border-[var(--oc-border)] px-2 py-2 text-xs font-bold text-[var(--oc-brand)]"><Pencil className="size-3.5" />Editar</button>
-                  <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`¿Borrar a ${c.name}?`)) startTransition(() => { deleteCustomer(c.id) }) }} className="flex items-center justify-center gap-1 rounded-lg border border-[var(--oc-border)] px-2 py-2 text-xs font-bold text-[var(--oc-coral)]"><Trash2 className="size-3.5" />Borrar</button>
+                  <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`¿Borrar a ${c.name}?`)) startTransition(async () => { await deleteCustomer(c.id); await invalidate('customers') }) }} className="flex items-center justify-center gap-1 rounded-lg border border-[var(--oc-border)] px-2 py-2 text-xs font-bold text-[var(--oc-coral)]"><Trash2 className="size-3.5" />Borrar</button>
                 </div>
               </>
             )}

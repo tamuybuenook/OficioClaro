@@ -12,6 +12,7 @@ import { buildBanner, type NotificationRow } from '@/lib/notifications/banner'
 import { getMasterUtCurrent } from '@/lib/services/masterUt'
 import { AppShell, type Job } from '@/components/app-shell'
 import { LandingPage } from '@/components/landing/landing-page'
+import { PurgeLocalCache } from '@/components/local-cache-session'
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ vista?: string; mp?: string }> }) {
   const sp = await searchParams
@@ -20,7 +21,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ v
 
   if (!user) {
     const { data: plans } = await supabase.from('plans').select('*').eq('is_active', true).order('price')
-    return <LandingPage plans={plans ?? []} />
+    return <><PurgeLocalCache keepDrafts /><LandingPage plans={plans ?? []} /></>
   }
 
   const { data: profileRow } = await supabase
@@ -107,6 +108,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ v
 
   return (
     <AppShell
+      userId={user.id}
       jobs={jobs}
       profile={profile}
       paymentDetails={paymentDetails}

@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { getServicePricing } from '@/lib/services/pricing'
+import { getPricingBatch } from '@/lib/services/pricingBatch'
 import { getMyEnabledTradeIds } from '@/lib/services/userTrades'
 
 // ABRO -> BUSCO EL TRABAJO -> VEO EL PRECIO (sección 2/17/18).
@@ -25,8 +25,9 @@ export async function searchPrices(query: string) {
   const { data: services, error } = await builder.limit(15)
   if (error) throw error
 
-  const results = await Promise.all(
-    (services ?? []).map(async (s) => ({ service: s, pricing: await getServicePricing(s.id, user.id) })),
-  )
-  return results.filter((r) => r.pricing !== null)
+  const pricing = await getPricingBatch(supabase, user.id, (services ?? []).map((s) => s.id))
+  return (services ?? []).flatMap((s) => {
+    const p = pricing.get(s.id)
+    return p ? [{ service: s, pricing: p }] : []
+  })
 }

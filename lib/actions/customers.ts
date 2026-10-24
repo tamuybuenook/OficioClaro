@@ -24,7 +24,7 @@ export async function createCustomer(formData: FormData) {
     .select()
     .single()
   if (error) return { error: error.message }
-  revalidatePath('/clientes')
+  revalidatePath('/clientes'); revalidatePath('/')
   return { data }
 }
 
@@ -43,7 +43,7 @@ export async function updateCustomer(id: string, formData: FormData) {
     })
     .eq('id', id)
   if (error) return { error: error.message }
-  revalidatePath('/clientes')
+  revalidatePath('/clientes'); revalidatePath('/')
 }
 
 export async function deleteCustomer(id: string) {
@@ -52,5 +52,5 @@ export async function deleteCustomer(id: string) {
   const supabase = await createClient()
   const { error } = await supabase.from('customers').delete().eq('id', id)
   if (error) return { error: error.message }
-  revalidatePath('/clientes')
+  revalidatePath('/clientes'); revalidatePath('/')
 }

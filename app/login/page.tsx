@@ -4,6 +4,7 @@ import { GoogleButton } from '@/components/auth/google-button'
 import { PasswordField } from '@/components/auth/password-field'
 import { SubmitButton } from '@/components/auth/submit-button'
 import { AuthShell } from '@/components/auth/auth-shell'
+import { PurgeLocalCache } from '@/components/local-cache-session'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 
@@ -16,6 +17,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const { reset } = await searchParams
 
   return (
+    <>
+      <PurgeLocalCache keepDrafts />
     <AuthShell
       title="Ingresar a tu cuenta"
       subtitle="Volvé a tus precios, clientes y presupuestos."
@@ -37,5 +40,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
 
       <p className="mt-7 text-center text-[17px] text-[var(--lp-ink-soft)]">¿No tenés cuenta? <a href="/register" className="font-bold text-[var(--lp-brand)] underline underline-offset-4">Creá una gratis</a></p>
     </AuthShell>
+    </>
   )
 }

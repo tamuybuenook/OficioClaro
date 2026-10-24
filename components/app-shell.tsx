@@ -8,9 +8,11 @@ import { money } from '@/lib/format'
 import { Badge } from '@/components/ui/badge'
 import { ThemePicker } from '@/components/theme-picker'
 import { TradeCatalog } from '@/components/features/catalog/trade-catalog'
-import type { AgendaIntent, Job, View } from '@/components/types'
+import type { AgendaIntent, Job, QuoteIntent, View } from '@/components/types'
 import { ClientsUpdated } from '@/components/features/clients/clients-view'
 import { QuotesView } from '@/components/features/quotes/quotes-view'
+import { OwnCatalogView } from '@/components/features/catalog/own-catalog'
+import { LocalCacheSession, PurgeLocalCache, SignOutForm } from '@/components/local-cache-session'
 import { MisOficios } from '@/components/features/trades/mis-oficios'
 import { SubscriptionView, type BillingInfo, type SubscriptionInfo } from '@/components/features/subscription/subscription-view'
 import { Profile } from '@/components/features/profile/profile-view'
@@ -45,6 +47,7 @@ import {
   MapPin,
   Menu,
   MoreHorizontal,
+  Package,
   Search,
   Settings,
   ShieldCheck,
@@ -56,6 +59,7 @@ import {
 } from 'lucide-react'
 
 export type AppShellProps = {
+  userId: string
   jobs: Job[]
   profile: {
     fullName: string
@@ -142,6 +146,9 @@ function Sidebar({ view, setView, isAdminUser }: { view: View; setView: (v: View
         <div role="button" tabIndex={0} onClick={() => setView('budgets')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setView('budgets') }} className={`oc-nav-button flex cursor-pointer items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold transition ${view === 'budgets' ? 'bg-[var(--oc-nav-active)] text-[var(--oc-brand)]' : 'text-[var(--oc-muted)] hover:bg-[var(--oc-surface-soft)]'}`}>
           <FileText className="size-[18px]" />Presupuestos
         </div>
+        <div role="button" tabIndex={0} onClick={() => setView('my-catalog')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setView('my-catalog') }} className={`oc-nav-button flex cursor-pointer items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold transition ${view === 'my-catalog' ? 'bg-[var(--oc-nav-active)] text-[var(--oc-brand)]' : 'text-[var(--oc-muted)] hover:bg-[var(--oc-surface-soft)]'}`}>
+          <Package className="size-[18px]" />Mi catálogo
+        </div>
         <div role="button" tabIndex={0} onClick={() => setView('subscription')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setView('subscription') }} className={`oc-nav-button flex cursor-pointer items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold transition ${view === 'subscription' ? 'bg-[var(--oc-nav-active)] text-[var(--oc-brand)]' : 'text-[var(--oc-muted)] hover:bg-[var(--oc-surface-soft)]'}`}>
           <ShieldCheck className="size-[18px]" />Suscripción
         </div>
@@ -150,7 +157,7 @@ function Sidebar({ view, setView, isAdminUser }: { view: View; setView: (v: View
         </div>
       </div>
 
-      <form action={signOut} className="mt-auto border-t border-[var(--oc-border-soft)] pt-4"><button type="submit" className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-[var(--oc-coral)] hover:bg-[var(--oc-surface-soft)]"><X className="size-[18px]" />Cerrar sesión</button></form>
+      <SignOutForm action={signOut} className="mt-auto border-t border-[var(--oc-border-soft)] pt-4"><button type="submit" className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-[var(--oc-coral)] hover:bg-[var(--oc-surface-soft)]"><X className="size-[18px]" />Cerrar sesión</button></SignOutForm>
     </aside>
   )
 }
@@ -244,16 +251,19 @@ function MyList({ setView, setSelected, enabledTrades, unitValue }: { setView: (
   </div>
 }
 
-export function AppShell({ jobs, profile, paymentDetails, customers, subscription, access, banner, billing, initialView, trades, isAdminUser }: AppShellProps) {
+export function AppShell({ userId, jobs, profile, paymentDetails, customers, subscription, access, banner, billing, initialView, trades, isAdminUser }: AppShellProps) {
   const [dismissedId, setDismissedId] = useState<string | null>(null)
   const [view, setView] = useState<View>(initialView ?? 'home')
   const [selected, setSelected] = useState<Job | null>(jobs[0] ?? null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [agendaIntent, setAgendaIntent] = useState<AgendaIntent | null>(null)
   const [openClientId, setOpenClientId] = useState<string | null>(null)
+  const [quoteIntent, setQuoteIntent] = useState<QuoteIntent | null>(null)
   const [payPending, startPayTransition] = useTransition()
   const goAgenda = useCallback((intent: AgendaIntent | null) => { setAgendaIntent(intent); setView('agenda') }, [])
   const clearAgendaIntent = useCallback(() => setAgendaIntent(null), [])
+  const goQuote = useCallback((intent: QuoteIntent) => { setQuoteIntent(intent); setView('budgets') }, [])
+  const clearQuoteIntent = useCallback(() => setQuoteIntent(null), [])
   const openClient = useCallback((id: string) => { setOpenClientId(id); setView('clients') }, [])
   useEffect(() => { if (view !== 'clients') setOpenClientId(null) }, [view])
   const firstName = profile.fullName.split(' ')[0] || profile.fullName
@@ -274,11 +284,12 @@ export function AppShell({ jobs, profile, paymentDetails, customers, subscriptio
     if (view === 'prices') return <Prices setView={setView} setSelected={setSelected} enabledTrades={enabledTrades} />
     if ((view as string) === 'prices-detail') return <Detail job={selected!} setView={setView} unitValue={profile.unitValue} />
     if (view === 'my-list') return <MyList setView={setView} setSelected={setSelected} enabledTrades={enabledTrades} unitValue={profile.unitValue} />
-    if (view === 'clients') return <ClientsUpdated customers={customers} initialOpenId={openClientId} onSchedule={(customerId) => goAgenda({ kind: 'new', customerId })} onOpenJob={(jobId) => goAgenda({ kind: 'open', jobId })} />
-    if (view === 'agenda') return <AgendaView intent={agendaIntent} onIntentHandled={clearAgendaIntent} onOpenClient={openClient} />
+    if (view === 'clients') return <ClientsUpdated customers={customers} initialOpenId={openClientId} onSchedule={(customerId) => goAgenda({ kind: 'new', customerId })} onQuote={(customerId) => goQuote({ kind: 'new', customerId })} onOpenJob={(jobId) => goAgenda({ kind: 'open', jobId })} />
+    if (view === 'agenda') return <AgendaView intent={agendaIntent} onIntentHandled={clearAgendaIntent} onOpenClient={openClient} onQuote={(c) => goQuote(c.quoteId ? { kind: 'open', quoteId: c.quoteId } : { kind: 'new', customerId: c.customerId, jobId: c.jobId })} />
     if (view === 'profile') return <Profile setView={setView} profile={profile} paymentDetails={paymentDetails} subscription={subscription} />
     if (view === 'subscription') return <SubscriptionView subscription={subscription} billing={billing} onReportPayment={handleReportPayment} reportPending={payPending} />
-    if (view === 'budgets') return <QuotesView customers={customers} jobs={jobs} onSchedule={(quoteId) => goAgenda({ kind: 'from-quote', quoteId })} />
+    if (view === 'budgets') return <QuotesView intent={quoteIntent} onIntentHandled={clearQuoteIntent} onSchedule={(quoteId) => goAgenda({ kind: 'from-quote', quoteId })} onBackToAgenda={(jobId) => goAgenda({ kind: 'open', jobId })} onOpenJob={(jobId) => goAgenda({ kind: 'open', jobId })} />
+    if (view === 'my-catalog') return <OwnCatalogView />
     return <Proximamente title="Presupuestos" />
   }
 
@@ -289,10 +300,11 @@ export function AppShell({ jobs, profile, paymentDetails, customers, subscriptio
   if (access.locked) {
     return (
       <div className="min-h-screen bg-[var(--oc-page)] text-[var(--oc-ink)]">
+        <PurgeLocalCache keepDrafts />
         <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-[var(--oc-border)] bg-[var(--oc-page)]/95 px-5 backdrop-blur md:px-8">
           <Logo />
           <div className="flex items-center gap-3"><span className="hidden text-sm font-semibold text-[var(--oc-muted)] sm:block">{profile.fullName}</span>
-            <form action={signOut}><button type="submit" className="rounded-xl px-3 py-2 text-sm font-semibold text-[var(--oc-coral)] hover:bg-[var(--oc-surface-soft)]">Cerrar sesión</button></form></div>
+            <SignOutForm action={signOut}><button type="submit" className="rounded-xl px-3 py-2 text-sm font-semibold text-[var(--oc-coral)] hover:bg-[var(--oc-surface-soft)]">Cerrar sesión</button></SignOutForm></div>
         </header>
         {notice && <AccessBanner notice={notice} />}
         <SubscriptionView subscription={subscription} billing={billing} onReportPayment={handleReportPayment} reportPending={payPending} />
@@ -300,5 +312,5 @@ export function AppShell({ jobs, profile, paymentDetails, customers, subscriptio
     )
   }
 
-  return <div className="min-h-screen bg-[var(--oc-page)] text-[var(--oc-ink)]"><div className="flex min-h-screen"><Sidebar view={view} setView={setView} isAdminUser={isAdminUser} /><div className="min-w-0 flex-1"><AppHeader onMenu={() => setMenuOpen(true)} name={profile.fullName} />{notice && <AccessBanner notice={notice} actionLabel={view !== 'subscription' && !notice.dismissible ? 'Ver suscripción' : undefined} onAction={() => setView('subscription')} onDismiss={dismiss} />}{render()}</div></div><BottomNav view={view} setView={setView} />{menuOpen && <div className="fixed inset-0 z-40 bg-[var(--oc-brand)]/20 md:hidden" onClick={() => setMenuOpen(false)}><div className="h-full w-[280px] bg-[var(--oc-surface-muted)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}><div className="flex items-center justify-between"><Logo /><button onClick={() => setMenuOpen(false)} aria-label="Cerrar menú"><X className="size-5 text-[var(--oc-muted)]" /></button></div><div className="mt-8 flex flex-col gap-1">{[...navItems, { id: 'profile' as View, label: 'Mi perfil', icon: Settings }, { id: 'clients' as View, label: 'Mis clientes', icon: Users }, { id: 'agenda' as View, label: 'Agenda', icon: CalendarDays }, { id: 'budgets' as View, label: 'Presupuestos', icon: FileText }, { id: 'subscription' as View, label: 'Suscripción', icon: ShieldCheck }].map(({ id, label, icon: Icon }) => <button key={id} onClick={() => { setView(id); setMenuOpen(false) }} className="flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-[var(--oc-muted)] hover:bg-[var(--oc-surface-soft)]"><Icon className="size-[18px]" />{label}</button>)}{isAdminUser && <a href="/admin" className="flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-[var(--oc-muted)] hover:bg-[var(--oc-surface-soft)]"><ShieldCheck className="size-[18px]" />Panel admin</a>}<form action={signOut}><button type="submit" className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-[var(--oc-coral)] hover:bg-[var(--oc-surface-soft)]"><X className="size-[18px]" />Cerrar sesión</button></form></div></div></div>}</div>
+  return <div className="min-h-screen bg-[var(--oc-page)] text-[var(--oc-ink)]"><LocalCacheSession userId={userId} /><div className="flex min-h-screen"><Sidebar view={view} setView={setView} isAdminUser={isAdminUser} /><div className="min-w-0 flex-1"><AppHeader onMenu={() => setMenuOpen(true)} name={profile.fullName} />{notice && <AccessBanner notice={notice} actionLabel={view !== 'subscription' && !notice.dismissible ? 'Ver suscripción' : undefined} onAction={() => setView('subscription')} onDismiss={dismiss} />}{render()}</div></div><BottomNav view={view} setView={setView} />{menuOpen && <div className="fixed inset-0 z-40 bg-[var(--oc-brand)]/20 md:hidden" onClick={() => setMenuOpen(false)}><div className="h-full w-[280px] bg-[var(--oc-surface-muted)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}><div className="flex items-center justify-between"><Logo /><button onClick={() => setMenuOpen(false)} aria-label="Cerrar menú"><X className="size-5 text-[var(--oc-muted)]" /></button></div><div className="mt-8 flex flex-col gap-1">{[...navItems, { id: 'profile' as View, label: 'Mi perfil', icon: Settings }, { id: 'clients' as View, label: 'Mis clientes', icon: Users }, { id: 'agenda' as View, label: 'Agenda', icon: CalendarDays }, { id: 'budgets' as View, label: 'Presupuestos', icon: FileText }, { id: 'my-catalog' as View, label: 'Mi catálogo', icon: Package }, { id: 'subscription' as View, label: 'Suscripción', icon: ShieldCheck }].map(({ id, label, icon: Icon }) => <button key={id} onClick={() => { setView(id); setMenuOpen(false) }} className="flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-[var(--oc-muted)] hover:bg-[var(--oc-surface-soft)]"><Icon className="size-[18px]" />{label}</button>)}{isAdminUser && <a href="/admin" className="flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-[var(--oc-muted)] hover:bg-[var(--oc-surface-soft)]"><ShieldCheck className="size-[18px]" />Panel admin</a>}<SignOutForm action={signOut}><button type="submit" className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-[var(--oc-coral)] hover:bg-[var(--oc-surface-soft)]"><X className="size-[18px]" />Cerrar sesión</button></SignOutForm></div></div></div>}</div>
 }

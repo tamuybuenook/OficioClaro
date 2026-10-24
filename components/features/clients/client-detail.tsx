@@ -29,7 +29,7 @@ const activityLabel: Record<string, string> = {
 }
 const statusLabel: Record<string, string> = { draft: 'Borrador', sent: 'Enviado', accepted: 'Aceptado', rejected: 'Rechazado' }
 
-export function ClientDetail({ customerId, onBack, onSchedule, onOpenJob }: { customerId: string; onBack: () => void; onSchedule?: (customerId: string) => void; onOpenJob?: (jobId: string) => void }) {
+export function ClientDetail({ customerId, onBack, onSchedule, onQuote, onOpenJob }: { customerId: string; onBack: () => void; onSchedule?: (customerId: string) => void; onQuote?: (customerId: string) => void; onOpenJob?: (jobId: string) => void }) {
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchClientDetail>> | null>(null)
   const [tab, setTab] = useState<Tab>('datos')
   const [pending, startTransition] = useTransition()
@@ -66,7 +66,10 @@ export function ClientDetail({ customerId, onBack, onSchedule, onOpenJob }: { cu
       <button onClick={onBack} className="mb-4 flex items-center gap-2 text-sm font-semibold text-[var(--oc-brand)]"><ArrowLeft className="size-4" />Volver a clientes</button>
       <h1 className="text-2xl font-bold text-[var(--oc-ink)]">{c.name}</h1>
       <p className="mt-1 text-sm text-[var(--oc-muted)]">{[c.phone, c.email].filter(Boolean).join(' · ') || 'Sin datos de contacto'}</p>
-      {onSchedule && <button type="button" onClick={() => onSchedule(customerId)} className="mt-3 min-h-11 rounded-xl bg-[var(--oc-coral)] px-4 py-2.5 text-sm font-bold text-white">Programar trabajo</button>}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {onQuote && <button type="button" onClick={() => onQuote(customerId)} className="min-h-11 rounded-xl bg-[var(--oc-coral)] px-4 py-2.5 text-sm font-bold text-white">Presupuestar</button>}
+        {onSchedule && <button type="button" onClick={() => onSchedule(customerId)} className="min-h-11 rounded-xl border border-[var(--oc-border)] px-4 py-2.5 text-sm font-bold text-[var(--oc-brand)]">Programar trabajo</button>}
+      </div>
 
       <div className="mt-5 flex gap-2 overflow-x-auto pb-1">
         {TABS.map((t) => <button key={t.id} onClick={() => setTab(t.id)} className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-bold ${tab === t.id ? 'bg-[var(--oc-brand)] text-white' : 'border border-[var(--oc-border)] text-[var(--oc-muted)]'}`}>{t.label}</button>)}
@@ -107,6 +110,7 @@ export function ClientDetail({ customerId, onBack, onSchedule, onOpenJob }: { cu
 
         {tab === 'presupuestos' && (
           <div>
+            {onQuote && <button type="button" onClick={() => onQuote(customerId)} className="mb-4 min-h-11 rounded-lg bg-[var(--oc-coral)] px-3 py-2 text-xs font-bold text-white">+ Nuevo presupuesto para {c.name}</button>}
             {data.quotes.length === 0 ? <p className="text-sm text-[var(--oc-muted)]">Todavía no tiene presupuestos.</p> : (
               <div className="flex flex-col divide-y divide-[var(--oc-border-soft)]">
                 {data.quotes.map((q: any) => (

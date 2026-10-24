@@ -6,6 +6,7 @@ import { CATEGORY_LABEL, classifyPayment } from '@/lib/admin/billing/classify'
 import { formatArs, formatDateAr, formatDateTimeAr } from '@/lib/admin/billing/format'
 import { CategoryBadge, Crumbs, KeyValue, Mono, OutcomeBadge, card, incidentLabel, providerLabel } from '@/components/admin/billing/ui'
 import { periodAdjective } from '@/lib/plan-period'
+import { TransferDecision } from '@/components/admin/billing/transfer-decision'
 
 export const dynamic = 'force-dynamic'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -29,12 +30,21 @@ export default async function PagoDetallePage({ params }: { params: Promise<{ id
   const category = classifyPayment(p)
   const coveredUntil = d.logs.map((l) => l.new_value?.end_date).find((x) => typeof x === 'string') as string | undefined
   const billable = category === 'cobrado'
+  const isPendingTransfer = p.provider === 'transfer' && p.status === 'pending'
 
   return (
     <div className="max-w-5xl">
       <Crumbs items={[{ href: '/admin', label: 'Admin' }, { href: '/admin/facturacion', label: 'Facturación' }, { label: 'Pago' }]} />
       <h1 className="mt-1 flex flex-wrap items-center gap-3 text-2xl font-bold">Pago de {formatArs(p.amount)} <CategoryBadge p={p} /></h1>
-      <p className="mt-1 text-xs text-[var(--oc-muted)]">Vista de lectura. Para cambiar el estado de un pago se usan las operaciones validadas del servidor, no esta pantalla.</p>
+      <p className="mt-1 text-xs text-[var(--oc-muted)]">{isPendingTransfer ? 'Las transferencias pendientes se aprueban o rechazan acá; la decisión se ejecuta en el servidor y queda en el historial.' : 'Vista de lectura: este pago ya no admite decisiones manuales.'}</p>
+
+      {isPendingTransfer && (
+        <TransferDecision facts={{
+          paymentId: p.id, amountLabel: formatArs(p.amount), reference: p.reference ?? null, proofUrl: p.proof_url ?? null,
+          userLabel: `${sub?.profiles?.full_name ?? 'Sin nombre'}${email ? ` (${email})` : ''}`,
+          planLabel: p.plans?.name ?? null, currentEndLabel: sub?.end_date ? formatDateAr(sub.end_date) : null,
+        }} />
+      )}
 
       <div className={`${card} mt-5 p-5`}>
         <h2 className="mb-4 font-bold">Pago</h2>
@@ -99,7 +109,7 @@ export default async function PagoDetallePage({ params }: { params: Promise<{ id
           <ul className="flex flex-col gap-3 text-sm">
             {d.logs.map((l: any) => (
               <li key={l.id} className="border-b border-[var(--oc-border-soft)] pb-3 last:border-0">
-                <p className="font-medium">{ACTION_LABEL[l.action] ?? incidentLabel(l.action)}</p>
+                <p className="font-medium">{l.action === 'reconcile' && l.new_value?.status === 'rejected' ? 'Transferencia rechazada por un administrador' : ACTION_LABEL[l.action] ?? incidentLabel(l.action)}</p>
                 <p className="text-xs text-[var(--oc-muted)]">{formatDateTimeAr(l.created_at)}{l.actor_id ? ' · administrador' : ' · sistema'}{l.new_value?.end_date ? ` · vencimiento ${formatDateAr(l.new_value.end_date)}` : ''}{l.new_value?.notes ? ` · ${l.new_value.notes}` : ''}</p>
               </li>
             ))}
