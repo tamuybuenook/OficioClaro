@@ -6,6 +6,10 @@ import { Badge } from '@/components/ui/badge'
 import { Crumbs, KeyValue, Mono, card } from '@/components/admin/billing/ui'
 import { PolicyForm } from '@/components/admin/policy-form'
 import { settingsFromRows } from '@/lib/settings/policy'
+import { PAYMENT_CONFIG_KEYS, bankFieldsFromRows, paymentConfigFromRows } from '@/lib/settings/payment-config'
+import { getTransferInstructions } from '@/lib/transfer-instructions'
+import { BankDetailsForm } from '@/components/admin/bank-details-form'
+import { MpVisibilityToggle } from '@/components/admin/mp-visibility-toggle'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +27,14 @@ export default async function ConfiguracionPage() {
   try { policyRows = (await supabase.from('app_settings').select('key, value')).data } catch { /* valores iniciales */ }
   const policy = settingsFromRows(policyRows)
 
+  // Datos bancarios e interruptor de MP (migración 0036). Lectura aparte: si la migración falta, la política de arriba no se ve afectada.
+  let payRows: unknown = null
+  let payUnavailable = false
+  try { const r = await supabase.from('app_settings').select('key, value, text_value').in('key', [...PAYMENT_CONFIG_KEYS]); if (r.error) payUnavailable = true; else payRows = r.data } catch { payUnavailable = true }
+  const pay = paymentConfigFromRows(payRows)
+  const bankFields = bankFieldsFromRows(payRows)
+  const envTransfer = getTransferInstructions()
+
   return (
     <div className="max-w-4xl">
       <Crumbs items={[{ href: '/admin', label: 'Admin' }, { label: 'Configuración' }]} />
@@ -32,7 +44,30 @@ export default async function ConfiguracionPage() {
       <p className="mt-1 text-xs text-[var(--oc-muted)]">Valores iniciales: aviso 5 días, gracia 5 días. La duración de la prueba se edita por plan en Planes. Los avisos por email salen con el cron diario, por lo que pueden demorar hasta ~24 h.</p>
       <div className={`${card} mt-4 p-5`}><PolicyForm noticeDays={policy.noticeDays} graceDays={policy.graceDays} /></div>
 
+      <h2 className="mt-8 text-lg font-bold">Datos bancarios (pago por transferencia)</h2>
+      <p className="mt-1 text-xs text-[var(--oc-muted)]">Son los datos que ve el cliente al elegir pagar por transferencia. Titular, CUIT/CUIL y CBU/CVU son obligatorios; el alias es opcional.</p>
+      {payUnavailable ? (
+        <p className={`${card} mt-4 p-5 text-sm text-[var(--oc-warning-text)]`}>Esta configuración todavía no está disponible: falta aplicar la migración 0036 en la base de datos. Mientras tanto los clientes ven los datos de las variables de entorno TRANSFER_* (si existen).</p>
+      ) : (
+        <div className={`${card} mt-4 p-5`}>
+          <p className="mb-4 text-sm">Los clientes ven: {pay.bank ? <Badge tone="success">Datos cargados acá</Badge> : envTransfer ? <Badge tone="neutral">Variables de entorno (TRANSFER_*)</Badge> : <Badge tone="warning">Ningún dato cargado</Badge>}</p>
+          <BankDetailsForm {...bankFields} />
+        </div>
+      )}
+
       <h2 className="mt-8 text-lg font-bold">Mercado Pago</h2>
+      <div className={`${card} mt-4 p-5`}>
+        <h3 className="mb-2 font-bold">Visibilidad para los clientes</h3>
+        {payUnavailable ? (
+          <p className="text-sm text-[var(--oc-warning-text)]">No disponible hasta aplicar la migración 0036. Mientras tanto la sección de Mercado Pago se muestra normalmente.</p>
+        ) : (
+          <>
+            <p className="mb-3 text-sm">Sección de pago de Mercado Pago: {pay.mpHidden ? <Badge tone="warning">Oculta</Badge> : <Badge tone="success">Visible</Badge>}</p>
+            <p className="mb-4 text-xs text-[var(--oc-muted)]">Ocultarla solo cambia lo que ven los clientes al pagar. No borra la configuración de Mercado Pago, no modifica suscripciones ni renovaciones existentes y no afecta el pago por transferencia.</p>
+            <MpVisibilityToggle hidden={pay.mpHidden} />
+          </>
+        )}
+      </div>
       <p className="mt-1 text-xs text-[var(--oc-muted)]">Diagnóstico de solo lectura. Nunca se muestran tokens ni secretos y no se cargan desde acá: las credenciales se configuran en Vercel (guía en docs/VERCEL_MERCADOPAGO.md). Que la configuración esté completa no significa que la integración esté validada contra Mercado Pago.</p>
 
       <div className={`${card} mt-4 p-5`}>

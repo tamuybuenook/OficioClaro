@@ -12,6 +12,8 @@ import type { AgendaIntent, Job, QuoteIntent, View } from '@/components/types'
 import { ClientsUpdated } from '@/components/features/clients/clients-view'
 import { QuotesView } from '@/components/features/quotes/quotes-view'
 import { OwnCatalogView } from '@/components/features/catalog/own-catalog'
+import { AccountNotices, AccountSummaryCard } from '@/components/features/account/account-summary-card'
+import { buildAccountSummary } from '@/lib/account-summary'
 import { LocalCacheSession, PurgeLocalCache, SignOutForm } from '@/components/local-cache-session'
 import { MisOficios } from '@/components/features/trades/mis-oficios'
 import { SubscriptionView, type BillingInfo, type SubscriptionInfo } from '@/components/features/subscription/subscription-view'
@@ -164,15 +166,16 @@ function Sidebar({ view, setView, isAdminUser }: { view: View; setView: (v: View
 
 function BottomNav({ view, setView }: { view: View; setView: (v: View) => void }) { return <nav className="fixed inset-x-0 bottom-0 z-30 grid h-[72px] grid-cols-5 border-t border-[var(--oc-border)] bg-[var(--oc-surface)]/95 px-2 pb-1 backdrop-blur md:hidden">{[...navItems, { id: 'profile' as View, label: 'Perfil', icon: Settings }].map(({ id, label, icon: Icon }) => <button key={id} onClick={() => setView(id)} className={`oc-bottom-nav-button flex flex-col items-center justify-center gap-1 text-[10px] font-semibold ${view === id ? 'text-[var(--oc-brand)]' : 'text-[#849096]'}`}><Icon className="size-[19px]" />{label}</button>)}</nav> }
 
-function HomePage({ setView, setSelected, jobs, subscription, firstName, onAgenda }: { setView: (v: View) => void; setSelected: (j: Job) => void; jobs: Job[]; subscription: AppShellProps['subscription']; firstName: string; onAgenda: (intent: AgendaIntent | null) => void }) {
+function HomePage({ setView, setSelected, jobs, summary, firstName, onAgenda }: { setView: (v: View) => void; setSelected: (j: Job) => void; jobs: Job[]; summary: ReturnType<typeof buildAccountSummary>; firstName: string; onAgenda: (intent: AgendaIntent | null) => void }) {
   const [query, setQuery] = useState('')
   const today = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
   const todayLabel = today.charAt(0).toUpperCase() + today.slice(1)
-  const subLabel = ({ active: 'Activa', trial: 'Prueba', past_due: 'Pago pendiente', cancelled: 'Sin renovación', expired: 'Vencida', suspended: 'Suspendida', none: 'Sin plan' } as Record<string, string>)[subscription?.state ?? 'none'] ?? 'Sin plan'
 
   return <div className="mx-auto max-w-[1040px] p-5 pb-28 md:p-8">
     {/* 1. Encabezado */}
     <div className="mb-7"><p className="text-sm font-medium text-[var(--oc-muted)]">{todayLabel}</p><h1 className="mt-1 text-[28px] font-bold tracking-tight text-[var(--oc-ink)]">Hola, <span className="text-[var(--oc-coral)]">{firstName}</span>.</h1><p className="mt-1 text-sm text-[var(--oc-muted)]">Tenés tus precios y tus trabajos a mano.</p></div>
+
+    <AccountNotices notices={summary.notices} onOpen={() => setView('subscription')} />
 
     {/* 2. Acción principal: consulta de precios */}
     <section className="rounded-3xl bg-[var(--oc-brand-strong)] p-5 text-white shadow-[0_12px_30px_rgba(23,63,95,0.14)] md:p-7">
@@ -217,14 +220,7 @@ function HomePage({ setView, setSelected, jobs, subscription, firstName, onAgend
         <div className="mt-5 flex items-center justify-between border-t border-[var(--oc-border-soft)] pt-4 text-sm"><span className="text-[var(--oc-muted)]">Actualización de precios</span><span className="font-semibold text-[#344d5a]">Próxima actualización</span></div>
         <button onClick={() => setView('my-list')} className="mt-4 flex items-center gap-1 text-sm font-bold text-[var(--oc-brand)]">Ver mi lista <ArrowRight className="size-4" /></button>
       </div>
-      <div className="rounded-2xl border border-[var(--oc-border)] bg-[var(--oc-surface)] p-5">
-        <div className="flex items-start justify-between">
-          <div><p className="text-xs font-semibold uppercase tracking-wide text-[#8a979a]">Estado de cuenta</p><p className="mt-1 text-xl font-bold text-[#2f414a]">{subscription?.planName ?? 'Sin plan'}</p></div>
-          <Badge tone={subscription?.state === 'active' ? 'success' : 'warning'}>{subLabel}</Badge>
-        </div>
-        <div className="mt-5 flex items-center justify-between border-t border-[var(--oc-border-soft)] pt-4 text-sm"><span className="text-[var(--oc-muted)]">Próximo vencimiento</span><span className="font-semibold text-[#344d5a]">{subscription?.endDate ?? '—'}</span></div>
-        <button onClick={() => setView('subscription')} className="mt-4 flex items-center gap-1 text-sm font-bold text-[var(--oc-brand)]">Ver mi suscripción <ArrowRight className="size-4" /></button>
-      </div>
+      <AccountSummaryCard summary={summary} onAction={() => setView('subscription')} />
     </div>
 
     {/* Próximos trabajos (agenda) */}
@@ -259,7 +255,7 @@ export function AppShell({ userId, jobs, profile, paymentDetails, customers, sub
   const [agendaIntent, setAgendaIntent] = useState<AgendaIntent | null>(null)
   const [openClientId, setOpenClientId] = useState<string | null>(null)
   const [quoteIntent, setQuoteIntent] = useState<QuoteIntent | null>(null)
-  const [payPending, startPayTransition] = useTransition()
+  const [payPending] = useTransition()
   const goAgenda = useCallback((intent: AgendaIntent | null) => { setAgendaIntent(intent); setView('agenda') }, [])
   const clearAgendaIntent = useCallback(() => setAgendaIntent(null), [])
   const goQuote = useCallback((intent: QuoteIntent) => { setQuoteIntent(intent); setView('budgets') }, [])
@@ -270,24 +266,30 @@ export function AppShell({ userId, jobs, profile, paymentDetails, customers, sub
   const noTrades = trades.enabledIds.length === 0
   const enabledTrades = trades.all.filter((t) => trades.enabledIds.includes(t.id))
 
-  function handleReportPayment(formData: FormData) {
-    if (!subscription) return
-    startPayTransition(() => { reportTransferPayment(subscription.id, formData) })
+  // Devuelve el resultado real de la acción (antes se descartaba: el usuario no veía errores ni confirmación).
+  async function handleReportPayment(formData: FormData) {
+    if (!subscription) return { error: 'Necesitás una suscripción antes de informar un pago.' }
+    return reportTransferPayment(subscription.id, formData)
   }
+
+  const accountSummary = useMemo(
+    () => buildAccountSummary({ subscription: subscription ? { planName: subscription.planName, state: subscription.state, endDate: subscription.endDate } : null, access: { daysToEnd: access.daysToEnd, locked: access.locked }, payments: billing.payments }),
+    [subscription, access.daysToEnd, access.locked, billing.payments],
+  )
 
   const render = () => {
     if ((view === 'prices' || (view as string) === 'prices-detail' || view === 'my-list') && noTrades) {
       return <div className="mx-auto max-w-md p-8 pb-28 text-center"><p className="font-bold text-[var(--oc-ink)]">Todavía no agregaste ningún oficio.</p><p className="mt-1 text-sm text-[var(--oc-muted)]">Activá tu actividad para ver y personalizar tu lista de precios.</p><button onClick={() => setView('trades')} className="mt-4 rounded-xl bg-[var(--oc-brand)] px-4 py-2.5 text-sm font-bold text-white">Ir a Mis oficios</button></div>
     }
     if (view === 'trades') return <MisOficios setView={setView} trades={trades} />
-    if (view === 'home') return <HomePage setView={setView} setSelected={setSelected} jobs={jobs} subscription={subscription} firstName={firstName} onAgenda={goAgenda} />
+    if (view === 'home') return <HomePage setView={setView} setSelected={setSelected} jobs={jobs} summary={accountSummary} firstName={firstName} onAgenda={goAgenda} />
     if (view === 'prices') return <Prices setView={setView} setSelected={setSelected} enabledTrades={enabledTrades} />
     if ((view as string) === 'prices-detail') return <Detail job={selected!} setView={setView} unitValue={profile.unitValue} />
     if (view === 'my-list') return <MyList setView={setView} setSelected={setSelected} enabledTrades={enabledTrades} unitValue={profile.unitValue} />
     if (view === 'clients') return <ClientsUpdated customers={customers} initialOpenId={openClientId} onSchedule={(customerId) => goAgenda({ kind: 'new', customerId })} onQuote={(customerId) => goQuote({ kind: 'new', customerId })} onOpenJob={(jobId) => goAgenda({ kind: 'open', jobId })} />
     if (view === 'agenda') return <AgendaView intent={agendaIntent} onIntentHandled={clearAgendaIntent} onOpenClient={openClient} onQuote={(c) => goQuote(c.quoteId ? { kind: 'open', quoteId: c.quoteId } : { kind: 'new', customerId: c.customerId, jobId: c.jobId })} />
-    if (view === 'profile') return <Profile setView={setView} profile={profile} paymentDetails={paymentDetails} subscription={subscription} />
-    if (view === 'subscription') return <SubscriptionView subscription={subscription} billing={billing} onReportPayment={handleReportPayment} reportPending={payPending} />
+    if (view === 'profile') return <Profile setView={setView} profile={profile} paymentDetails={paymentDetails} summary={accountSummary} />
+    if (view === 'subscription') return <SubscriptionView subscription={subscription} billing={billing} onReportPayment={handleReportPayment} reportPending={payPending} daysToEnd={access.daysToEnd} />
     if (view === 'budgets') return <QuotesView intent={quoteIntent} onIntentHandled={clearQuoteIntent} onSchedule={(quoteId) => goAgenda({ kind: 'from-quote', quoteId })} onBackToAgenda={(jobId) => goAgenda({ kind: 'open', jobId })} onOpenJob={(jobId) => goAgenda({ kind: 'open', jobId })} />
     if (view === 'my-catalog') return <OwnCatalogView />
     return <Proximamente title="Presupuestos" />
@@ -307,7 +309,7 @@ export function AppShell({ userId, jobs, profile, paymentDetails, customers, sub
             <SignOutForm action={signOut}><button type="submit" className="rounded-xl px-3 py-2 text-sm font-semibold text-[var(--oc-coral)] hover:bg-[var(--oc-surface-soft)]">Cerrar sesión</button></SignOutForm></div>
         </header>
         {notice && <AccessBanner notice={notice} />}
-        <SubscriptionView subscription={subscription} billing={billing} onReportPayment={handleReportPayment} reportPending={payPending} />
+        <SubscriptionView subscription={subscription} billing={billing} onReportPayment={handleReportPayment} reportPending={payPending} daysToEnd={access.daysToEnd} />
       </div>
     )
   }

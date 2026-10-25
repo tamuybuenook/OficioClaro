@@ -10,6 +10,8 @@ import { getMyAccess } from '@/lib/services/access'
 import { syncNotifications } from '@/lib/notifications/sync'
 import { buildBanner, type NotificationRow } from '@/lib/notifications/banner'
 import { getMasterUtCurrent } from '@/lib/services/masterUt'
+import { getTransferInstructions } from '@/lib/transfer-instructions'
+import { PAYMENT_CONFIG_KEYS, paymentConfigFromRows, transferFromBank, type PaymentConfig } from '@/lib/settings/payment-config'
 import { AppShell, type Job } from '@/components/app-shell'
 import { LandingPage } from '@/components/landing/landing-page'
 import { PurgeLocalCache } from '@/components/local-cache-session'
@@ -44,6 +46,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ v
 
   let mpAvailable = false
   try { getMpConfig(); mpAvailable = true } catch { /* sin configurar: la UI ofrece solo transferencia */ }
+
+  // Configuración editable por el admin (migración 0036). Si no se puede leer: MP visible y datos de transferencia de las variables de entorno.
+  let payConfig: PaymentConfig = { bank: null, mpHidden: false }
+  try { const r = await supabase.from('app_settings').select('key, value, text_value').in('key', [...PAYMENT_CONFIG_KEYS]); if (!r.error) payConfig = paymentConfigFromRows(r.data) } catch { /* valores por defecto */ }
+  if (payConfig.mpHidden) mpAvailable = false // solo oculta la sección de pago; no toca suscripciones ni webhooks
 
   const [list, customers, subscription, enabledTradeIds, tradeLimit, masterUtValue, plans, payments, notifSync] = await Promise.all([
     locked ? Promise.resolve([]) : getMyList(),
@@ -136,8 +143,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ v
         plans: plans.map((p: any) => ({ id: p.id, name: p.name, price: Number(p.price), billingPeriod: p.billing_period, maxTrades: p.max_trades ?? null })),
         payments: (payments as any[])
           .filter((x) => x.mp_status !== 'creation_failed' && x.mp_status !== 'created')
-          .slice(0, 10)
-          .map((x) => ({ id: x.id, createdAt: x.created_at, amount: Number(x.amount), status: x.status, provider: x.provider, planName: x.plan?.name ?? x.subscriptions?.plans?.name ?? null })),
+          .slice(0, 30)
+          .map((x) => ({ id: x.id, createdAt: x.created_at, amount: Number(x.amount), status: x.status, provider: x.provider, planName: x.plan?.name ?? x.subscriptions?.plans?.name ?? null, reference: x.reference ?? null, proofUrl: x.proof_url ?? null })),
+        transfer: payConfig.bank ? transferFromBank(payConfig.bank) : getTransferInstructions(),
         mpReturn: sp.mp === 'ok' || sp.mp === 'pending' || sp.mp === 'error' ? sp.mp : null,
       }}
       initialView={sp.vista === 'suscripcion' ? 'subscription' : undefined}
